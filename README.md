@@ -4,6 +4,13 @@ A laptop-first robotics demonstration workbench: describe a bounded task, inspec
 the plan, approve it, watch an articulated arm execute it, and review the recorded
 simulator episode. No physical robot is required.
 
+The environment studio adds four repeatable scenarios and a reviewed scene
+composer. Describe supported setups such as **“Create a workcell with two red
+blocks and one blue block”**, inspect the validated draft, and approve it. The
+scenario suite runs actual controller checks for baseline completion, rearranged
+objects, unreachable targets, and occupied trays. Downloadable results distinguish
+expected rejection from unexpected failure.
+
 The interface is informed by Intrinsic Flowstate's workcell/skill workflow,
 Foxglove's synchronized recordings, and Formant's operator controls. It uses its
 own branding and implementation. See [design references](docs/DESIGN_REFERENCES.md)
@@ -38,6 +45,14 @@ already using port 5173. The API listens on loopback port 8787; Vite proxies
    browser. JSON export is available in either mode.
 6. Reset the scene, select a part, and change its starting position. Commands
    resolve against the current positions rather than a pre-recorded animation.
+7. Open **Environment** to load another scenario, describe a custom workcell,
+   or run and export the controller-validation suite.
+
+Robot activity messages report task start, verified placements, and failures.
+With a verified live Agora session, optional narration uses the existing Murf
+Falcon voice through Agora's `speak` API. Progress requests are appended and may
+queue until a pending conversational turn finishes. Provider acceptance does not
+prove audible playback; the UI reports queued voice accurately.
 
 Supported local commands include:
 
@@ -50,11 +65,18 @@ Pause
 Resume
 Stop
 Reset
+Create a workcell with two red blocks and one blue block
+Create an empty workcell
+Create a reach-limit test
 ```
 
 The local command interpreter is deliberately bounded. Unknown objects and
 ambiguous destinations cause clarification rather than invented actions. Live
 LLM interpretation becomes available through the optional voice integration.
+Scene authoring creates instances of a supported template, with a maximum of
+six rigid objects. It is not arbitrary text-to-3D generation. Camera/video-assisted
+scene suggestions are a planned, separately reviewed stage; video import is not
+implemented in this version.
 
 ## Real Agora + Murf voice
 
@@ -102,6 +124,9 @@ and local episode persistence.
 | --- | --- |
 | `src/App.tsx` | Command center, approvals, execution queue, recorder, replay |
 | `src/sim/engine.ts` | Authoritative world state, grounded plans, motion controller |
+| `src/sim/scenarios.ts` | Repeatable environments and actual controller checks |
+| `src/sim/scene-authoring.ts` | Bounded scene drafts and schema/geometry validation |
+| `src/components/ScenarioStudio.tsx` | Environment library, composer, and test results |
 | `src/components/RobotScene.tsx` | 3D rendering and camera controls |
 | `src/integrations/voice.ts` | Agora RTC client and voice-command bridge |
 | `server/config.mjs` | Server-only provider config and task knowledge |

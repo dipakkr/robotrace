@@ -101,3 +101,40 @@ test('real adapter payload uses a private callback and waits for simulator ackno
   abort.abort();
   await post('/api/voice/stop', { sessionId: session.sessionId });
 });
+
+test('progress narration uses documented non-interrupting TTS with session and length/rate limits', async t => {
+  const fakeEnv = {
+    AGORA_APP_ID: 'a'.repeat(32), AGORA_APP_CERTIFICATE: 'b'.repeat(32),
+    AGORA_CUSTOMER_ID: 'test-customer', AGORA_CUSTOMER_SECRET: 'test-secret',
+    MURF_API_KEY: 'test-murf', LLM_API_KEY: 'test-llm', PUBLIC_API_BASE_URL: 'https://callback.example',
+  };
+  const spokenRequests = [];
+  const providerFetch = async (url, request) => {
+    if (url.endsWith('/join')) return new Response(JSON.stringify({ agent_id: 'test-agent-id' }), { status: 200 });
+    if (url.endsWith('/speak')) spokenRequests.push({ url, body: JSON.parse(request.body) });
+    return new Response('{}', { status: 200 });
+  };
+  const { post } = await fixture(t, { env: fakeEnv, fetchImpl: providerFetch });
+  const missing = await post('/api/voice/announce', { sessionId: 'unknown', text: 'Moving.' });
+  assert.equal(missing.status, 404);
+  assert.equal(spokenRequests.length, 0);
+  const session = await (await post('/api/voice/start', {})).json();
+  const tooLong = await post('/api/voice/announce', { sessionId: session.sessionId, text: '界'.repeat(200) });
+  assert.equal(tooLong.status, 400); // 200 characters, but 600 UTF-8 bytes
+  const response = await post('/api/voice/announce', { sessionId: session.sessionId, text: 'Red block placed in tray A.' });
+  assert.equal(response.status, 202);
+  const result = await response.json();
+  assert.equal(result.spoken, true);
+  assert.equal(result.accepted, true);
+  assert.equal(result.queued, true);
+  assert.equal(result.playbackVerified, false);
+  assert.equal(spokenRequests.length, 1);
+  assert.match(spokenRequests[0].url, /\/agents\/test-agent-id\/speak$/);
+  assert.deepEqual(spokenRequests[0].body, {
+    text: 'Red block placed in tray A.', priority: 'APPEND', interruptable: true,
+  });
+  const duplicate = await post('/api/voice/announce', { sessionId: session.sessionId, text: 'Red block placed in tray A.' });
+  assert.equal((await duplicate.json()).suppressed, true);
+  assert.equal(spokenRequests.length, 1);
+  await post('/api/voice/stop', { sessionId: session.sessionId });
+});

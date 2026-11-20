@@ -119,9 +119,22 @@ export function planCommand(text: string, world: WorldState): CommandPlan {
   const isSort = /\bsort\b/.test(command);
   const allRequested = /\b(all|everything|every|prepare|pack|collect|clear)\b/.test(command) || isSort;
   const available = world.objects.filter(object => object.status !== 'in-transit');
-  let selected = requestedColors.length
-    ? available.filter(object => requestedColors.some(color => object.id.includes(color)))
-    : allRequested ? available : [];
+  let selected: SceneObject[] = [];
+  if (requestedColors.length) {
+    for (const color of requestedColors) {
+      const matching = available.filter(object => object.id.includes(color));
+      if (!matching.length) return { ...base, summary: 'That object is not available in the current scene.', error: `There is no available ${color} block in the current scene.` };
+      const numbered = [...command.matchAll(new RegExp(`\\b${color}\\s+(?:block|part|cube)\\s*(?:number\\s*)?(\\d+)\\b`, 'g'))].map(match => Number(match[1]));
+      if (numbered.length) {
+        if (numbered.some(ordinal => ordinal < 1 || ordinal > matching.length)) return { ...base, summary: 'That numbered object is not available.', error: `The current scene has ${matching.length} ${color} block${matching.length === 1 ? '' : 's'}. Choose an existing block number.` };
+        selected.push(...[...new Set(numbered)].map(ordinal => matching[ordinal - 1]));
+      } else {
+        const pluralReference = new RegExp(`\\b${color}\\s+(?:blocks|parts|cubes)\\b`).test(command);
+        if (matching.length > 1 && !allRequested && !pluralReference) return { ...base, summary: 'Please identify the object.', error: `There are ${matching.length} ${color} blocks. Say “${color} block 1”, “${color} block 2”, or “all ${color} blocks”.` };
+        selected.push(...matching);
+      }
+    }
+  } else if (allRequested) selected = available;
   // Leaving an explicitly mentioned object is supported without guessing.
   const leaveMatch = command.match(/\b(?:leave|except|excluding|skip)\s+(?:the\s+)?(red|blue|green)\b/);
   if (leaveMatch) selected = (allRequested ? available : selected).filter(object => !object.id.includes(leaveMatch[1]));

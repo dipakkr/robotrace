@@ -147,6 +147,32 @@ export async function stopVoiceSession(): Promise<void> {
   await activeConnection?.stop();
 }
 
+export interface VoiceAnnouncementResult {
+  /** True means Agora accepted the TTS request; it does not verify playback. */
+  spoken: boolean;
+  accepted?: boolean;
+  queued?: boolean;
+  playbackVerified?: false;
+  suppressed?: boolean;
+  reason?: string;
+}
+
+/** Send a trusted simulator milestone through the existing Murf Falcon voice.
+ * APPEND avoids interrupting tool inference; speech can be delayed until the
+ * current conversational turn ends. Never use this as a playback acknowledgment.
+ */
+export async function announceVoiceProgress(text: string): Promise<VoiceAnnouncementResult> {
+  if (!activeConnection) return { spoken: false, accepted: false, reason: 'Voice is not connected.' };
+  if (!text.trim() || text.length > 300 || new TextEncoder().encode(text.trim()).length > 512) {
+    return { spoken: false, accepted: false, reason: 'Progress announcement exceeds its length limit.' };
+  }
+  try {
+    return await jsonRequest<VoiceAnnouncementResult>('/api/voice/announce', { sessionId: activeConnection.sessionId, text });
+  } catch (error) {
+    return { spoken: false, accepted: false, reason: error instanceof Error ? error.message : 'Voice progress request failed.' };
+  }
+}
+
 export async function saveEpisodeToServer(episode: unknown): Promise<{ id: string; savedAt: string; saved: boolean; storage: string }> {
   return jsonRequest('/api/episodes', episode);
 }

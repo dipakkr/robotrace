@@ -56,6 +56,7 @@ call ID within each session. Dataset approval remains an explicit UI action.
 | `GET /api/episodes` | List up to 100 saved episode summaries |
 | `POST /api/voice/start` | Create a real Agora conversational agent and RTC credentials |
 | `POST /api/voice/stop` | Stop the provider agent and close the local bridge |
+| `POST /api/voice/announce` | Queue a short simulator milestone through the agent's existing Murf TTS |
 | `GET /api/voice/events?sessionId=...` | Browser command stream (SSE) |
 | `POST /api/voice/context` | Refresh server's view of simulator state |
 | `POST /api/voice/ack` | Report actual command outcome |
@@ -95,3 +96,33 @@ See the [Main join API reference](https://docs.agora.io/en/api-reference/api-ref
 [Main custom-tools guide](https://docs.agora.io/en/ai/build/tools/custom-tools).
 Documentation review and mocked tests establish the request's intended contract;
 only a real account test can establish provider availability and live operation.
+
+### Simulator progress narration
+
+`announceVoiceProgress(text)` uses the active voice session automatically. It
+calls the local `/api/voice/announce` route, which sends the documented Main
+`POST .../agents/{agentId}/speak` request with
+`{text, priority: "APPEND", interruptable: true}`. The existing agent's Murf Falcon
+configuration supplies the voice. This bypasses LLM inference for the progress
+text and never sends provider credentials to the browser.
+
+The route caps text at 300 characters and 512 UTF-8 bytes, suppresses rapid
+requests and repeats, and allows one announcement request at a time. Only an
+existing local session can issue a request; the public tool-only listener does
+not expose this route. Use short, state-derived milestones, not every animation
+frame or speculative future outcomes.
+
+`APPEND` waits until the agent's current interaction ends. A long-running voice
+action tool can therefore delay narration until it returns. `INTERRUPT` would
+interrupt speech and thinking and could disrupt the tool turn, so progress
+narration deliberately does not use it. Immediate narration during a long action
+would need a short action-start acknowledgment plus separately tracked progress.
+
+The compatibility field `spoken: true` means the provider accepted the speech
+request. Responses also include `accepted: true`, `queued: true`, and
+`playbackVerified: false`; do not label this as confirmed audible playback.
+Without a connected voice session, the helper returns `spoken: false` and the UI
+can still show its local narration feed.
+
+Official sources: [Main speak API](https://docs.agora.io/en/api-reference/api-ref/conversational-ai/speak)
+and the [official Agora SDK reference](https://github.com/AgoraIO/agora-agents-python/blob/main/reference.md).

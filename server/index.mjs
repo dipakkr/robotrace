@@ -137,6 +137,7 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const session = {
           id, agentId: result.agent_id, toolSecret, clients: new Set(), pending: new Map(), cache: new Map(),
           world: input.world || null, worldUpdatedAt: Date.now(),
+          lastAnnouncementAt: 0, lastAnnouncementText: '', announcementPending: false,
         };
         session.expiry = setTimeout(() => { stopSession(session).catch(() => {}); }, 30 * 60 * 1000);
         session.expiry.unref();
@@ -150,6 +151,35 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const session = sessions.get(sessionId);
         if (session) await stopSession(session);
         respond(res, 200, { stopped: true }); return;
+      }
+
+      if (url.pathname === '/api/voice/announce' && req.method === 'POST') {
+        const { sessionId, text } = await body(req);
+        const session = sessions.get(sessionId);
+        if (!session) { respond(res, 404, { spoken: false, accepted: false, error: 'Voice session not found.' }); return; }
+        const message = typeof text === 'string' ? text.trim() : '';
+        if (!message || message.length > 300 || Buffer.byteLength(message, 'utf8') > 512) {
+          respond(res, 400, { spoken: false, accepted: false, error: 'Progress text must be 1–300 characters and at most 512 UTF-8 bytes.' }); return;
+        }
+        const now = Date.now();
+        if (session.announcementPending || now - session.lastAnnouncementAt < 1600
+          || (message === session.lastAnnouncementText && now - session.lastAnnouncementAt < 10000)) {
+          respond(res, 200, { spoken: false, accepted: false, suppressed: true, reason: 'Progress announcements are rate-limited and duplicate-filtered.' }); return;
+        }
+        session.announcementPending = true;
+        session.lastAnnouncementAt = now;
+        session.lastAnnouncementText = message;
+        try {
+          // APPEND preserves an in-flight conversational/tool turn. INTERRUPT
+          // would cancel the agent's thought process while our tool is waiting.
+          await agora(`agents/${encodeURIComponent(session.agentId)}/speak`, {
+            text: message, priority: 'APPEND', interruptable: true,
+          });
+          // 'spoken' is the compatibility flag for an accepted speak request,
+          // not proof of audible playback. The explicit fields prevent the UI
+          // from treating REST acceptance as a verified audio-completion event.
+          respond(res, 202, { spoken: true, accepted: true, queued: true, playbackVerified: false, priority: 'APPEND' }); return;
+        } finally { session.announcementPending = false; }
       }
 
       if (url.pathname === '/api/voice/context' && req.method === 'POST') {
