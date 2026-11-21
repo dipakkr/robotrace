@@ -1,3 +1,9 @@
+# Current final demo entry
+
+Use the current [three-minute README sequence](../README.md#a-three-minute-demonstration): **Start → voice actions → Stop → Save & view report → inspect/export**. This includes whole-session speech/audio recording and requested-versus-observed QA. The older matched-pair demo below remains an optional advanced example, not the current primary stage flow.
+
+There is no command textbox in the free kitchen. Pause and Stop are session controls in the conversation area; stopping keeps the route and scene. Saving after Stop is explicit, and records remain unreviewed. If a save fails, retain the dialog and retry; do not discard or refresh the only browser draft.
+
 # Three-minute product demo and recovery
 
 **Current operator policy — latest user instruction:** the local console uses a
@@ -116,7 +122,7 @@ physical truth.
 
 | Problem | Action | Accurate statement |
 | --- | --- | --- |
-| Microphone/provider failure | Read the visible error; deliberately Reset voice or switch to typed commands. | “This turn has not proved a live voice round trip.” |
+| Microphone/provider failure | Read the visible error; deliberately Reset voice or deliberately stop and reconnect after recovery. | “This turn has not proved a live voice round trip.” |
 | Progress narration is late | Use current controller checks. | “Speech refers to an already verified milestone and can be queued.” |
 | Human proxy blocks movement | Clear the explicit proxy and Resume. | “This is a software scenario, not tracked human motion or certified safety.” |
 | Save fails | Retain/export the recorded evidence and retry the save directly. | “Persistent save is not confirmed; the record remains unreviewed.” |

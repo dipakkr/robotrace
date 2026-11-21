@@ -7,15 +7,15 @@ export const MOBILE_FLOOR_BLOCK_LABEL = 'Movable floor block';
 export const MOBILE_FLOOR_BLOCK_SIZE = 0.7;
 export interface MobileStation { id: MobileStationId; label: string; dock: MobilePoint; surface: MobilePoint; height: number }
 export interface MobileObject {
-  id: string; label: string; position: MobilePoint; height: number;
+  id: string; label: string; color?: string; position: MobilePoint; height: number;
   station: MobileStationId | 'robot'; status: 'ready' | 'loading' | 'carried' | 'unloading' | 'delivered';
 }
 export type MobileStep =
-  | { kind: 'navigate'; stationId: MobileStationId; label: string; path: MobilePoint[] }
+  | { kind: 'navigate'; stationId?: MobileStationId; target?: MobilePoint; straight?: true; label: string; path: MobilePoint[] }
   | { kind: 'reach-check' | 'pickup' | 'place'; stationId: MobileStationId; objectId: string; label: string };
 export interface MobilePlan {
   id: string; worldRevision: number; command: string; summary: string; rationale: string[]; steps: MobileStep[]; confirmationRequired: boolean;
-  goal?: { objectId?: string; stationId: MobileStationId; hold?: true }; error?: string; control?: 'pause' | 'resume' | 'stop' | 'reset';
+  goal?: { objectId?: string; stationId: MobileStationId; hold?: true; position?: never } | { position: MobilePoint; stationId?: never; objectId?: never; hold?: never }; error?: string; control?: 'pause' | 'resume' | 'stop' | 'reset';
 }
 export interface MobileWorld {
   schema: 'teachtrace.mobile-kitchen.v1'; seed: number; simTime: number; revision: number; distanceTravelled: number;
@@ -59,8 +59,8 @@ export function createMobileKitchen(seed = 0): MobileWorld {
       { id: 'home', label: 'Home', dock: [-3, 2.5], surface: [-3, 2.5], height: 0 },
     ],
     objects: [
-      { id: 'cup', label: 'Cup', position: [-3.2, -2.65], height: 0.95, station: 'counter', status: 'ready' },
-      { id: 'bowl', label: 'Bowl', position: [-2.8, -2.65], height: 0.95, station: 'counter', status: 'ready' },
+      { id: 'cup', label: 'Cup', color: 'red', position: [-3.2, -2.65], height: 0.95, station: 'counter', status: 'ready' },
+      { id: 'bowl', label: 'Bowl', color: 'green', position: [-2.8, -2.65], height: 0.95, station: 'counter', status: 'ready' },
     ],
     robot: { position: [-3, 2.5], yaw: Math.PI, radius: 0.27, speed: 0.8, armReach: 1.35, mode: 'idle', phase: 'Ready at home', cargoObjectId: null },
     human: null, mission: null, events: [],
@@ -149,14 +149,42 @@ export function findMobileRoute(world: MobileWorld, start: MobilePoint, goal: Mo
 }
 
 export function planMobileTask(text: string, world: MobileWorld): MobilePlan {
-  const command = text.trim().toLowerCase().replace(/[.!?]+$/, '').replace(/\s+/g, ' ');
+  let command = text.trim().toLowerCase().replace(/[.!?]+$/, '').replace(/\s+/g, ' ');
+  command = command.replace(/^(?:can|could|would) you(?: please)?[, ]+/, '');
+  const spokenDistances:Record<string,string> = {one:'1',two:'2',three:'3',four:'4',five:'5',half:'0.5'};
+  command = command.replace(/\b((?:go|move) (?:straight|forward|backward|left|right)) (one|two|three|four|five|half) (?:a )?(?=(?:meters?|metres?)$)/, (_match,prefix:string,word:string)=>`${prefix} ${spokenDistances[word]} `);
+  command = command.replace(/^(please )?pick (?!up\b)/, '$1pick up ');
   const base: MobilePlan = { id: `mobile-${world.revision}-${command.replace(/\W+/g, '-').slice(0, 80)}`, worldRevision: world.revision, command: text, summary: '', rationale: [], steps: [], confirmationRequired: false };
   const controls = { pause: 'pause', resume: 'resume', continue: 'resume', stop: 'stop', abort: 'stop', reset: 'reset' } as const;
   if (Object.hasOwn(controls, command)) return { ...base, summary: `${command} mobile mission`, control: controls[command as keyof typeof controls], confirmationRequired: command === 'reset' };
+  const relative = command.match(/^(?:please )?(?:go|move) (straight|forward|backward|left|right) (\d+(?:\.\d+)?) (?:m|meters?|metres?)$/);
+  const absolute = command.match(/^(?:please )?(?:go|move|navigate) to (?:x (-?\d+(?:\.\d+)?) z (-?\d+(?:\.\d+)?)|coordinates (-?\d+(?:\.\d+)?),?\s+(-?\d+(?:\.\d+)?))$/);
+  if (relative || absolute) {
+    let target: MobilePoint;
+    if (relative) {
+      const meters = Number(relative[2]);
+      if (meters < .05 || meters > 5) return { ...base, summary: 'Choose a bounded movement.', error: 'Relative movement must be between 0.05 and 5 simulated meters.' };
+      const yaw = world.robot.yaw, direction = relative[1];
+      const vector = direction === 'left' ? [-Math.cos(yaw), Math.sin(yaw)] : direction === 'right' ? [Math.cos(yaw), -Math.sin(yaw)] : [Math.sin(yaw) * (direction === 'backward' ? -1 : 1), Math.cos(yaw) * (direction === 'backward' ? -1 : 1)];
+      target = [world.robot.position[0] + vector[0] * meters, world.robot.position[1] + vector[1] * meters];
+    } else target = [Number(absolute![1] ?? absolute![3]), Number(absolute![2] ?? absolute![4])];
+    if (!pointAllowed(world, target)) return { ...base, summary: 'Coordinate is outside the floor.', error: 'The requested floor X/Z point is outside the known robot-clearance bounds.' };
+    if (relative && (!mobileSegmentIsClear(world, world.robot.position, target) || !mobileSegmentAvoidsHuman(world, world.robot.position, target))) return { ...base, summary: 'Straight movement is obstructed.', error: 'The requested straight segment intersects known furniture, a floor block or the person scenario. No detour or motion was inserted.' };
+    const path = relative ? [[...world.robot.position] as MobilePoint, target] : findMobileRoute(world, world.robot.position, target, { avoidHuman: true });
+    if (!path) return { ...base, summary: 'No clear coordinate route.', error: 'The known map has no collision-free route to that floor X/Z point.' };
+    const label = `Navigate to x ${target[0].toFixed(2)} z ${target[1].toFixed(2)}`;
+    return { ...base, summary: label, rationale: [relative ? `Move ${relative[2]} m ${relative[1]} relative to the current heading; retain a straight path with no detour.` : 'Route to the requested floor X/Z coordinate in simulated meters; validated detours are allowed.', world.robot.cargoObjectId ? 'The existing payload remains held; no pickup or placement was requested.' : 'Navigate the base only; no object action was requested.'], steps: [{ kind: 'navigate', target, ...(relative ? { straight: true as const } : {}), label, path }], goal: { position: target } };
+  }
+  const colourReferences = [...command.matchAll(/\b(red|green|blue|yellow|orange|white|black|brown|grey|gray|purple) (cup|bowl)\b/g)];
+  for (const reference of colourReferences) {
+    const object = world.objects.find(item => item.id === reference[2]);
+    if (!object?.color || object.color.toLowerCase() !== reference[1]) return { ...base, summary: 'The stated object colour does not match.', error: object?.color ? `${object.label} is ${object.color}, not ${reference[1]}. Name the actual object colour or use its label.` : `No verified colour is recorded for ${object?.label ?? reference[2]}. Use the object label instead.` };
+  }
+  command = command.replace(/\b(red|green|blue|yellow|orange|white|black|brown|grey|gray|purple) (?=(?:cup|bowl)\b)/g, '');
   const objects = world.objects.filter(object => new RegExp(`\\b${object.id}\\b`, 'i').test(command) || new RegExp(`\\b${object.label}\\b`, 'i').test(command));
   const hold = /^(?:please )?(?:pick up|carry)\b/.test(command);
   const pickupSource = command.match(/^(?:please )?pick up (?:the )?(?:cup|bowl) (?:at|on) (?:the )?(counter|table|sink|home)$/)?.[1];
-  const destinationMatches = pickupSource ? [] : [...command.matchAll(/\b(?:to|into|onto|in|at)\s+(?:the\s+)?(counter|table|sink|home|dock)\b/g)].map(match => match[1] === 'dock' ? 'home' : match[1]);
+  const destinationMatches = pickupSource ? [] : [...command.matchAll(/\b(?:to|into|onto|in|at|on)\s+(?:the\s+)?(counter|table|sink|home|dock)\b/g)].map(match => match[1] === 'dock' ? 'home' : match[1]);
   const bareNavigation = command.match(/^(?:please )?(?:go|navigate|drive)(?: to)? (?:the )?(counter|table|sink|home|dock)$/);
   if (bareNavigation) destinationMatches.push(bareNavigation[1] === 'dock' ? 'home' : bareNavigation[1]);
   if (/^(?:please )?pick up\b/.test(command) && !destinationMatches.length && objects.length === 1) {
@@ -240,7 +268,8 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
       world.robot.mode = 'error'; world.robot.phase = error; mission.status = 'failed'; event(world, 'blocked', error);
       return { world, done: true, error };
     };
-    if (!station) return fail('The mobile station is missing. Replan from the current scene.');
+    const navigationTarget = step.kind === 'navigate' ? step.target ?? station?.dock : undefined;
+    if (step.kind === 'navigate' ? !navigationTarget : !station) return fail('The mobile navigation target or handling station is missing. Replan from the current scene.');
     let next: MobilePoint = [...world.robot.position];
     let spent = 0, complete = false;
     if (step.kind === 'navigate') {
@@ -248,16 +277,17 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
       if (!waypoint) { complete = true; }
       else {
         if (!mobileSegmentIsClear(world, world.robot.position, waypoint) || humanBlocks(world, waypoint)) {
+          if (step.straight) { world.robot.mode = 'paused'; world.robot.phase = 'The requested straight segment is obstructed. Move or clear the obstacle, then explicitly resume; no detour was inserted.'; event(world, 'blocked', world.robot.phase); return { world, done: false, blocked: world.robot.phase }; }
           const floorBlock = world.obstacles.find(obstacle => obstacle.id === MOBILE_FLOOR_BLOCK_ID);
           const blockedByFloorBlock = !!floorBlock && hitsRectangle(world.robot.position, waypoint, floorBlock, world.robot.radius + 0.03);
           const blockedByHuman = humanBlocks(world, waypoint);
-          const route = findMobileRoute(world, world.robot.position, station.dock, { avoidHuman: true });
+          const route = findMobileRoute(world, world.robot.position, navigationTarget!, { avoidHuman: true });
           if (!route) {
-            if (floorBlock && findMobileRoute({ ...world, obstacles: world.obstacles.filter(obstacle => obstacle.id !== MOBILE_FLOOR_BLOCK_ID) }, world.robot.position, station.dock, { avoidHuman: true })) {
+            if (floorBlock && findMobileRoute({ ...world, obstacles: world.obstacles.filter(obstacle => obstacle.id !== MOBILE_FLOOR_BLOCK_ID) }, world.robot.position, navigationTarget!, { avoidHuman: true })) {
               world.robot.mode = 'paused'; world.robot.phase = 'Movable floor block leaves no clear route to the dock. Move or remove the block, then explicitly resume.';
               event(world, 'blocked', world.robot.phase); return { world, done: false, blocked: world.robot.phase };
             }
-            if (world.human && findMobileRoute(world, world.robot.position, station.dock)) {
+            if (world.human && findMobileRoute(world, world.robot.position, navigationTarget!)) {
               world.robot.mode = 'paused'; world.robot.phase = 'Human scenario leaves no clear route to the dock. Move or clear the person, then explicitly resume.';
               event(world, 'blocked', world.robot.phase); return { world, done: false, blocked: world.robot.phase };
             }
@@ -331,7 +361,7 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
     event(world, step.kind, step.label + ' verified.');
     mission.completedSteps++; mission.stepIndex++; mission.waypointIndex = 1; mission.phaseElapsed = 0; delete mission.handlingStart; world.revision++;
     if (mission.stepIndex === mission.plan.steps.length) {
-      mission.status = 'completed'; world.robot.mode = 'idle'; world.robot.phase = 'Mobile task completed'; event(world, 'goal', mission.plan.goal?.hold ? 'Pickup or carry goal verified; object remains held.' : mission.plan.goal?.objectId ? 'Route and delivery goal verified.' : 'Navigation docking goal verified.');
+      mission.status = 'completed'; world.robot.mode = 'idle'; world.robot.phase = 'Mobile task completed'; event(world, 'goal', mission.plan.goal?.hold ? 'Pickup or carry goal verified; object remains held.' : mission.plan.goal?.objectId ? 'Route and delivery goal verified.' : mission.plan.goal?.position ? 'Point navigation goal verified.' : 'Navigation docking goal verified.');
       return { world, done: true };
     }
   }
@@ -343,7 +373,7 @@ export function mobileHumanAheadPosition(world: MobileWorld): MobilePoint {
   const active = world.mission?.plan.steps[world.mission.stepIndex];
   const next = world.mission?.plan.steps.slice(world.mission.stepIndex).find(step => step.kind === 'navigate');
   let route: MobilePoint[] | null = active?.kind === 'navigate' ? [[...world.robot.position], ...active.path.slice(world.mission!.waypointIndex)]
-    : next?.kind === 'navigate' ? findMobileRoute(world, world.robot.position, world.stations.find(station => station.id === next.stationId)!.dock) : null;
+    : next?.kind === 'navigate' ? findMobileRoute(world, world.robot.position, next.target ?? world.stations.find(station => station.id === next.stationId)!.dock) : null;
   if (!route || route.length < 2) {
     for (const station of world.stations.filter(station => station.id !== 'home')) {
       route = findMobileRoute(world, world.robot.position, station.dock);
@@ -421,6 +451,10 @@ export function applyMobileControl(source: MobileWorld, control: 'pause' | 'resu
 export function mobileGoalChecks(world: MobileWorld): MobileGoalCheck[] {
   const goal = world.mission?.plan.goal;
   if (!goal) return [{ id: 'task-defined', name: 'Mobile goal is defined', passed: false, detail: 'Approve a grounded mobile task first.' }];
+  if (goal.position) return [
+    { id: 'point-reached', name: `Robot reached x ${goal.position[0].toFixed(2)} z ${goal.position[1].toFixed(2)}`, passed: !goal.stationId && !goal.objectId && !goal.hold && goal.position.length === 2 && goal.position.every(Number.isFinite) && distance(world.robot.position, goal.position) <= .05, detail: 'The base must reach the requested floor X/Z point in simulated meters; this is not a named-station delivery.' },
+    { id: 'controller-settled', name: 'Mobile controller settled at coordinate target', passed: world.robot.mode === 'idle' && world.mission?.status === 'completed', detail: 'Point navigation requires a completed mission and settled base. Existing cargo remains held; no handling is requested.' },
+  ];
   const station = world.stations.find(item => item.id === goal.stationId);
   const object = world.objects.find(item => item.id === goal.objectId);
   if (goal.hold) return [
@@ -437,3 +471,6 @@ export function mobileGoalChecks(world: MobileWorld): MobileGoalCheck[] {
     { id: 'controller-settled', name: goal.objectId ? 'Mobile controller settled with empty carrier' : 'Mobile controller settled at navigation destination', passed: world.robot.mode === 'idle' && (!goal.objectId || world.robot.cargoObjectId === null) && world.mission?.status === 'completed', detail: goal.objectId ? 'A delivery requires a completed mission, settled base and empty carrier.' : 'Navigation requires a completed mission and settled base at its dock. Cargo may remain carried; no object release or delivery is asserted.' },
   ];
 }
+
+/** Exact current-map distance facts for voice context; never ask the LLM to invent geometry. */
+export function navigationDistanceContext(world:MobileWorld){return{coordinateFrame:'floor-XZ-meters',basePosition:[...world.robot.position] as MobilePoint,stations:world.stations.map(station=>{const route=findMobileRoute(world,world.robot.position,station.dock,{avoidHuman:true});return{stationId:station.id,label:station.label,dock:[...station.dock] as MobilePoint,straightLineMeters:distance(world.robot.position,station.dock),humanAwareRouteMeters:route?route.slice(1).reduce((sum,point,index)=>sum+distance(route[index],point),0):null,routeAvailable:route!==null};}),basis:'Current known floor map and conservative person proxy; straight-line distance is not walking-route length or arm reach.'};}

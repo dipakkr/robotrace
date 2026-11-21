@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { directSpeechCommand, VoiceSpeechControlGate } from '../integrations/voice-command-parser';
 import type { VoiceTranscript } from '../integrations/voice-captions';
 import type { VoiceCommandResult } from '../integrations/voice';
+import type { VoiceCommandContext } from '../integrations/voice';
 import { advanceMobileWorld, applyMobileControl, createMobileKitchen, mobileGoalChecks, planMobileTask, startMobilePlan } from '../sim/mobile-navigation';
 const transcript = (id: string, text: string, final = true): VoiceTranscript => ({ id, text, final, speaker: 'user', receivedAt: 1000 });
 
@@ -101,4 +102,39 @@ test('actual native navigation stays empty, Hindi Stop freezes motion, and a new
   for (let i = 0; i < 1000 && world.robot.mode === 'running'; i++) world = advanceMobileWorld(world, .1).world;
   assert.equal(world.robot.cargoObjectId, 'cup'); assert.equal(world.objects[0].station, 'robot');
   assert.equal(world.events.filter(event => event.kind === 'place').length, 0); assert.ok(mobileGoalChecks(world).every(check => check.passed));
+});
+
+test('direct controls carry their exact recognized caption while tools label only the latest observed association', async () => {
+  const calls: { command: string; context?: VoiceCommandContext }[] = [];
+  const gate = new VoiceSpeechControlGate((command, context) => { calls.push({ command, context }); return { completed: false, status: 'running' }; });
+  gate.receive(transcript('session:user:8', 'Can you go to table?'));
+  assert.deepEqual(calls[0], { command: 'Go to Table', context: { source: 'speech-control', userTurnId: 'session:user:8', recognizedText: 'Can you go to table?', receivedAt: 1000, turnAssociation: 'exact-caption' } });
+  await gate.executeTool('Go to Table', 'duplicate-tool-id'); assert.equal(calls.length, 1);
+  gate.receive(transcript('session:user:9', 'कप को उठाओ।'));
+  await gate.executeTool('Pick up cup', 'tool-command-id');
+  assert.deepEqual(calls[1].context, { source: 'voice-tool', userTurnId: 'session:user:9', recognizedText: 'कप को उठाओ।', receivedAt: 1000, commandId: 'tool-command-id', turnAssociation: 'latest-observed-user-turn' });
+  gate.clear(); await gate.executeTool('Go Home', 'no-caption');
+  assert.deepEqual(calls[2].context, { source: 'voice-tool', commandId: 'no-caption' });
+});
+
+test('final literal distance speech preserves one/six/decimal quantities and never interprets questions or negation', () => {
+  for(const [text,command] of [['Please move forward one meter.','Move forward 1 meter'],['Please go straight six meters.','Move straight 6 meters'],['Could you please move left half a meter?',null],['Can you move left half meter please?','Move left 0.5 meters'],['Move backward 1.5 meters.','Move backward 1.5 meters'],['Please go forward 0.05 meters.','Move forward 0.05 meters'],['कृपया एक मीटर आगे जाओ।','Move forward 1 meter'],['रोबोट आगे ६ मीटर चलो।','Move forward 6 meters'],['robot ek meter aage jao','Move forward 1 meter'],['aage chhe meter jao','Move forward 6 meters']]) {
+    assert.equal(directSpeechCommand(text!,false),null,text!);
+    assert.deepEqual(directSpeechCommand(text!,true),command?{kind:'relative-motion',command}:null,text!);
+  }
+  for(const text of ['Do not move forward one meter','How far is one meter?','Should I move forward one meter?','What happens if you move forward one meter','If I say move forward one meter','Move forward one meter and pick up cup','Move forward one or six meters','एक मीटर आगे मत जाओ','अगर एक मीटर आगे जाओ','ek meter aage mat jao']) assert.equal(directSpeechCommand(text,true),null,text);
+});
+
+test('actual recorded failed wording now drives one-meter native motion, rejects contradictory Home and refuses six meters without invented execution', async () => {
+  let world=createMobileKitchen();const calls:string[]=[];
+  const gate=new VoiceSpeechControlGate(command=>{calls.push(command);const plan=planMobileTask(command,world);if(plan.error)return{completed:false,error:plan.error,world};const started=startMobilePlan(world,plan,'immediate');world=started.world;return{completed:false,error:started.error,world};});
+  gate.receive(transcript('actual-failed-turn-one','Please move forward one meter.'));
+  for(let i=0;i<100&&world.robot.mode==='running';i++)world=advanceMobileWorld(world,.1).world;
+  assert.deepEqual(world.robot.position,[-3,1.5]);assert.ok(mobileGoalChecks(world).every(check=>check.passed));
+  assert.equal((await gate.executeTool('Go Home')).status,'rejected');
+  assert.equal((await gate.executeTool('Move forward 1 meter')).speechControlDeduplicated,true);
+  const before=structuredClone(world);gate.receive(transcript('actual-failed-turn-six','Please go straight six meters.'));
+  const refusal=await gate.executeTool('Go straight 6 meters');assert.equal(refusal.completed,false);assert.match(refusal.error!,/between 0.05 and 5/);assert.deepEqual(world,before);
+  assert.equal((await gate.executeTool('Go Home')).status,'rejected');assert.deepEqual(calls,['Move forward 1 meter','Move straight 6 meters']);
+  gate.receive(transcript('later-legitimate','Pick up cup'));await gate.executeTool('Pick up cup');assert.equal(calls.at(-1),'Pick up cup');
 });

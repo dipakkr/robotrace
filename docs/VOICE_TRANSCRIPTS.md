@@ -1,5 +1,17 @@
 # Voice transcript transport
 
+## Simulation audio controls and quiet validation
+
+The adapter exports `setVoiceSessionPaused(paused)`. Pause leaves RTC joined, awaits the Agora microphone track's `setMuted(true)`, and sets existing and newly subscribed remote playback tracks to volume zero. Resume unmutes the microphone and restores remote playback volume to 100. The microphone may remain locally captured by the SDK while publication is muted; this is not a device-permission shutdown. Stop simulation separately ends the session and closes the microphone.
+
+While paused, movement commands are rejected and discarded rather than buffered. Stop/Pause controls remain available. Resume requires a new actual user transcript turn before accepting another movement tool; previously observed pre-pause or paused turns cannot unlock it. The UI also invalidates pending asynchronous instruction interpretation when pausing. Three dedicated pause-gate tests cover rejection, fresh-turn handling and repeated state calls.
+
+The corrected live quiet rehearsal passed **5/5 checks**: one normal unpaused RTC session stayed connected for **35.048 seconds**, with one greeting, zero user transcripts, zero reminders/fillers and zero simulator announcement requests. The raw inbound audio was captured before application playback gain: the greeting measured **−25.26 dB RMS**, followed by **−110.80 dB RMS** after the greeting allowance. The test did not hide or block announcement audio.
+
+After that quiet window, the same session completed the real SDK Pause/Resume promises without reconnecting. Top-level Stop simulation ended voice and preserved the `/kitchen` route. Total session time was 39.495 seconds. Evidence is under `.local/qa/voice-quiet-attempt2/`, including `results.json`, `quiet-connected.png`, `paused-same-session.png` and `remote-audio-1.webm`. This validates a silent synthetic microphone fixture; it does not establish human microphone, acoustic echo or listening acceptance.
+
+The initial quiet harness failed before its 35-second window because it checked superseded status copy. It also assumed MediaRecorder WebM had duration metadata. The raw failed attempt remains under `.local/qa/voice-quiet/`. The corrected harness uses stable status attributes and decoded-audio `atrim` before RMS analysis, without relying on container duration metadata.
+
 ## Validation on 21 November 2026
 
 The second bounded real-provider rehearsal passed all four checks: remote RTC audio subscription, recognized user speech in the panel, the actual five-step delivery controller acknowledgment/completion, and assistant speech text. The 32.7-second session received 138 RTC data frames, decoded 60 transcript updates, and displayed three partial updates (two user, one assistant). Audio and video were recorded. No human microphone or human listening pass is claimed. Evidence: ignored `.local/qa/live-voice-captions-attempt2/results.json` and `voice-captions.mp4`.

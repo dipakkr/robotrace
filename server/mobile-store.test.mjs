@@ -7,11 +7,13 @@ import { join } from 'node:path';
 import { tsImport } from 'tsx/esm/api';
 import { createMobileEvidenceStore } from './mobile-store.mjs';
 import { createApiServer } from './index.mjs';
+import { consumeEvidence } from '../scripts/consume-evidence.mjs';
 
 const nav = await tsImport('../src/sim/mobile-navigation.ts', import.meta.url);
 const { createMobileEvidence } = await tsImport('../src/data/mobile-evidence.ts', import.meta.url);
 const { solveMobileArm } = await tsImport('../src/sim/mobile-arm.ts', import.meta.url);
 const { evaluateMobileCandidate } = await tsImport('../src/sim/mobile-candidates.ts', import.meta.url);
+const { createPhotoHallWorld } = await tsImport('../src/sim/photo-hall.ts', import.meta.url);
 const review = { approved: true, identityVerified: false };
 const seal = payload => ({ payload, integrity: { algorithm: 'SHA-256', encoding: 'UTF-8 JSON.stringify(payload)', digest: createHash('sha256').update(JSON.stringify(payload)).digest('hex') } });
 const badInput = error => error.status === 400;
@@ -120,6 +122,27 @@ test('native API saves pickup, carry-without-release and later placement as dist
  assert.equal(new Set(reports.map(report=>report.id)).size,3);
  const evidence=primitiveFixture(nav.createMobileKitchen(),'Pick up cup');evidence.payload.finalWorld.mission.plan.goal.hold=false;
  const rejected=await fetch(`${base}/api/mobile/episodes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({evidence:seal(evidence.payload),review})});assert.equal(rejected.status,400);
+});
+test('native API persists actual straight and absolute floor-point navigation with truthful empty or held custody reports',async t=>{
+ const server=createApiServer({env:{},dataDirectory:await temporary(t),fetchImpl:()=>assert.fail('No provider call')});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));const base=`http://127.0.0.1:${server.address().port}`;
+ const held=primitiveFixture(nav.createMobileKitchen(),'Pick up cup').payload.finalWorld;
+ for(const [initial,command] of [[nav.createMobileKitchen(),'Go straight 1 meter'],[nav.createMobileKitchen(),'Go to x -2 z 1.5'],[held,'Go to x -2 z 1']]){
+  const evidence=primitiveFixture(initial,command),final=evidence.payload.finalWorld;assert.deepEqual(Object.keys(final.mission.plan.goal),['position']);
+  const independent=consumeEvidence(evidence);assert.equal(independent.manifest.integrityVerified,true);assert.equal(independent.manifest.forwardKinematicsVerified,true);assert.equal(independent.manifest.sourceTaskChecksRecomputed,false);assert.equal(independent.manifest.terminalOutcome,'completed');
+  const response=await fetch(`${base}/api/mobile/episodes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({evidence,review:{approved:false,identityVerified:false,source:'operator-save'}})});const saved=await response.json();assert.equal(response.status,201,JSON.stringify(saved));
+  assert.equal(saved.report.accepted,true,JSON.stringify(saved.report.checks));assert.equal(saved.report.metrics.completedPlacements,0);assert.equal(saved.report.metrics.completedPickups,0);assert.deepEqual(saved.report.goal,final.mission.plan.goal);assert.match(saved.report.summary,/No object delivery is asserted/);
+  assert.ok(Math.hypot(final.robot.position[0]-saved.report.goal.position[0],final.robot.position[1]-saved.report.goal.position[1])<.05);
+  assert.equal(final.robot.cargoObjectId,initial.robot.cargoObjectId);assert.deepEqual(final.objects.find(item=>item.id==='bowl'),initial.objects.find(item=>item.id==='bowl'));
+  if(initial.robot.cargoObjectId)assert.equal(saved.report.checks.find(item=>item.id==='cargo-custody').passed,true);
+ }
+ const evidence=primitiveFixture(nav.createMobileKitchen(),'Go straight 1 meter');evidence.payload.finalWorld.mission.plan.goal.objectId='cup';
+ const response=await fetch(`${base}/api/mobile/episodes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({evidence:seal(evidence.payload),review})});assert.equal(response.status,400);
+});
+test('photo-informed office navigation saves through native store without inventing kitchen inventory or a kitchen report',async t=>{
+ const store=createMobileEvidenceStore({dataDirectory:await temporary(t)}),evidence=primitiveFixture(createPhotoHallWorld(),'Go to counter');
+ const saved=await store.submit({evidence,review:{approved:false,identityVerified:false,source:'operator-save'}});
+ assert.equal(saved.report.accepted,true,JSON.stringify(saved.report.checks));assert.equal(saved.report.assignmentId,'RT-PHOTO-HALL-001');assert.match(saved.report.title,/Photo-informed office/);assert.deepEqual((await store.get(saved.id)).evidence.payload.initialWorld.objects,[]);assert.equal(saved.report.metrics.completedPickups,0);assert.equal(saved.report.metrics.completedPlacements,0);assert.match(saved.report.summary,/No object delivery is asserted/);
 });
 test('holding cargo at Home is valid custody transport while releasing at Home remains unsupported',async t=>{
  const store=createMobileEvidenceStore({dataDirectory:await temporary(t)});

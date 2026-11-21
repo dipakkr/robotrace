@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import type { VoiceTranscript } from '../integrations/voice-captions';
 import type { VoiceStatus } from '../integrations/voice';
 import './VoiceConversation.css';
 
-export default function VoiceConversation({ entries, status }: { entries: VoiceTranscript[]; status: VoiceStatus }) {
+export default function VoiceConversation({ entries, status, paused = false, controls }: { entries: VoiceTranscript[]; status: VoiceStatus; paused?: boolean; controls?: ReactNode }) {
   const userTail = useRef<HTMLDivElement>(null), assistantTail = useRef<HTMLDivElement>(null);
   useEffect(() => { userTail.current?.scrollIntoView({ block: 'nearest' }); assistantTail.current?.scrollIntoView({ block: 'nearest' }); }, [entries]);
   const connected = status === 'live' || status === 'connected';
-  return <section className="voice-conversation" aria-label="Live voice conversation">
-    <header><strong>Voice conversation</strong><span data-connected={connected}>{status === 'live' ? 'RTC audio connected' : status === 'connected' ? 'RTC joined · awaiting audio' : status}</span></header>
+  return <section className="voice-conversation" data-voice-status={status} data-paused={paused} aria-label="Live voice conversation">
+    <header><strong>Live conversation</strong><span data-connected={connected}>{paused ? 'Simulation paused' : status === 'live' ? 'Simulation ready · audio live' : status === 'connected' ? 'Starting agent audio…' : status === 'connecting' ? 'Starting simulation…' : 'Simulation stopped'}</span>{controls && <div className="voice-simulation-controls">{controls}</div>}</header>
     <div className="voice-conversation-columns">{(['user', 'assistant'] as const).map(speaker => <div className="voice-speaker-pane" key={speaker}>
       <div className="voice-speaker-heading">{speaker === 'user' ? 'YOU' : 'ASSISTANT'}</div>
       <div className="voice-conversation-log" role="log" aria-label={`${speaker === 'user' ? 'Your' : 'Assistant'} speech transcript`} aria-live="polite" aria-relevant="additions text">

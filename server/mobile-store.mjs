@@ -34,15 +34,18 @@ function finiteJSON(value, depth = 0) {
   return record(value) && Object.values(value).every(item => finiteJSON(item, depth + 1));
 }
 
-function validGoal(goal) {
+const validPoint = (value,world) => Array.isArray(value) && value.length===2 && value.every(finite)
+  && value[0]>=world.bounds.minX && value[0]<=world.bounds.maxX && value[1]>=world.bounds.minZ && value[1]<=world.bounds.maxZ;
+function validGoal(goal,world) {
+  if(exact(goal,['position']))return validPoint(goal.position,world);
   return record(goal) && (exact(goal, ['stationId']) || exact(goal, ['objectId', 'stationId']) || (exact(goal, ['objectId', 'stationId', 'hold']) && goal.hold === true))
     && ['counter', 'table', 'sink', 'home'].includes(goal.stationId)
     && (goal.objectId === undefined || ['cup', 'bowl'].includes(goal.objectId));
 }
 
 function validateWorld(world) {
-  if (!record(world) || (world.environmentId !== undefined && world.environmentId !== 'mobile-kitchen')
-    || taskGuideForWorld({ ...world, environmentId: 'mobile-kitchen' }).id !== 'TT-MOBILE-KITCHEN-001'
+  if (!record(world) || (world.environmentId !== undefined && !['mobile-kitchen','photo-hall'].includes(world.environmentId))
+    || !['TT-MOBILE-KITCHEN-001','RT-PHOTO-HALL-001'].includes(taskGuideForWorld({ ...world, environmentId: world.environmentId==='photo-hall'?'photo-hall':'mobile-kitchen' }).id)
     || !Number.isSafeInteger(world.seed) || !text(world.robot.phase, 1000)
     || !Array.isArray(world.events) || world.events.length > 100
     || !world.events.every(event => record(event) && finite(event.time) && event.time >= 0 && event.time <= world.simTime + 1e-6
@@ -52,7 +55,7 @@ function validateWorld(world) {
   const mission = world.mission;
   if (mission === null) return;
   if (!record(mission) || !record(mission.plan) || !text(mission.plan.id, 200) || !text(mission.plan.command, 500)
-    || !integer(mission.plan.worldRevision, Number.MAX_SAFE_INTEGER) || !validGoal(mission.plan.goal)
+    || !integer(mission.plan.worldRevision, Number.MAX_SAFE_INTEGER) || !validGoal(mission.plan.goal,world)
     || !Array.isArray(mission.plan.steps) || mission.plan.steps.length < 1 || mission.plan.steps.length > 12
     || !['running', 'completed', 'stopped', 'failed'].includes(mission.status)
     || !integer(mission.stepIndex, mission.plan.steps.length) || !integer(mission.completedSteps, mission.plan.steps.length)
@@ -64,9 +67,10 @@ function validateWorld(world) {
     throw fail('The recorded mobile mission and its completion counters are malformed.');
   }
   for (const step of mission.plan.steps) {
-    const expectedKeys = step?.kind === 'navigate' ? ['kind', 'stationId', 'label', 'path'] : ['kind', 'stationId', 'objectId', 'label'];
+    const coordinate = step?.kind==='navigate' && Object.hasOwn(step,'target');
+    const expectedKeys = step?.kind === 'navigate' ? coordinate ? ['kind','target','label','path',...(Object.hasOwn(step,'straight')?['straight']:[])] : ['kind', 'stationId', 'label', 'path'] : ['kind', 'stationId', 'objectId', 'label'];
     if (!exact(step, expectedKeys) || !['navigate', 'reach-check', 'pickup', 'place'].includes(step.kind)
-      || !world.stations.some(station => station.id === step.stationId) || !text(step.label, 200)
+      || (coordinate ? !validPoint(step.target,world) || (step.straight!==undefined&&step.straight!==true) : !world.stations.some(station => station.id === step.stationId)) || !text(step.label, 200)
       || (step.kind !== 'navigate' && !world.objects.some(object => object.id === step.objectId))
       || (step.kind === 'navigate' && (!Array.isArray(step.path) || step.path.length < 1 || step.path.length > 1600
         || !step.path.every(point => Array.isArray(point) && point.length === 2 && point.every(finite)
@@ -169,9 +173,9 @@ async function verifyAndReport(envelope, review, id, savedAt) {
   if (distanceTravelled < 0 || durationSeconds < 0) throw fail('Recorded elapsed time and travel cannot regress.');
   const report = {
     schema: 'teachtrace.mobile-service-report.v1', id, episodeId: id, savedAt, createdAt: savedAt,
-    assignmentId: 'TT-MOBILE-KITCHEN-001', title: `Mobile kitchen: ${mission.plan.command}`, command: mission.plan.command, goal: { ...declared.goal },
+    assignmentId: payload.initialWorld.environmentId==='photo-hall'?'RT-PHOTO-HALL-001':'TT-MOBILE-KITCHEN-001', title: `${payload.initialWorld.environmentId==='photo-hall'?'Photo-informed office':'Mobile kitchen'}: ${mission.plan.command}`, command: mission.plan.command, goal: { ...declared.goal },
     accepted, taskAccepted: accepted, outcome, checks,
-    summary: `${reviewed ? 'Reviewed' : 'Unreviewed'} mobile attempt saved. Recorded outcome: ${outcome}. Task acceptance: ${accepted ? 'passed' : 'not accepted'}. ${accepted ? declared.goal.hold ? 'The recorded destination, held-object custody and protected-object checks passed. The object remains carried; no release or delivery is asserted.' : declared.goal.objectId ? 'The recorded final station, delivery and protected-object checks passed.' : `The recorded navigation destination${navigationCargoId ? ', preserved cargo custody' : ''} and protected-object checks passed. No object delivery is asserted.` : 'Inspect the recorded attempt and failed checks before preparing a corrected task.'}`,
+    summary: `${reviewed ? 'Reviewed' : 'Unreviewed'} mobile attempt saved. Recorded outcome: ${outcome}. Task acceptance: ${accepted ? 'passed' : 'not accepted'}. ${accepted ? declared.goal.hold ? 'The recorded destination, held-object custody and protected-object checks passed. The object remains carried; no release or delivery is asserted.' : declared.goal.objectId ? 'The recorded final station, delivery and protected-object checks passed.' : `The recorded navigation ${declared.goal.position?'floor point':'destination'}${navigationCargoId ? ', preserved cargo custody' : ''} and protected-object checks passed. No object delivery is asserted.` : 'Inspect the recorded attempt and failed checks before preparing a corrected task.'}`,
     metrics: { sampleCount: samples.length, distanceTravelled, durationSeconds, completedPickups: observedPickups, completedPlacements: observedPlacements, recordedCompletedSteps: mission.completedSteps },
     basis: 'independentlyrecomputed-recorded-simulator-state', independentlyRecomputed: true, motionReplayed: false,
     sourceHash: evidence.integrity.digest, sourceKind: 'locally-authored-mobile-simulation', review: savedReview,

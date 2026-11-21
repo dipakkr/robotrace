@@ -4,7 +4,12 @@ import { tsImport } from 'tsx/esm/api';
 import { taskGuideForEnvironment, taskGuideForWorld } from './task-guides.mjs';
 
 const mobile = await tsImport('../src/sim/mobile-navigation.ts', import.meta.url);
+const {createPhotoHallWorld}=await tsImport('../src/sim/photo-hall.ts',import.meta.url);
 const voiceWorld = world => ({ ...world, environmentId: 'mobile-kitchen', simulationAutoApproval: true });
+test('photo-informed office SOP retrieves actual desk labels and navigation-only estimated capabilities',()=>{
+ const world=createPhotoHallWorld(),guide=taskGuideForWorld(world);assert.equal(guide.id,'RT-PHOTO-HALL-001');assert.ok(guide.instructions.includes('Front desk'));assert.ok(guide.instructions.includes('Window desk'));assert.deepEqual(guide.assignments,[]);assert.ok(!guide.instructions.includes('Take cup'));assert.ok(guide.instructions.includes('not calibrated'));
+ world.stations.push({id:'sink',label:'Invented Sink',dock:[0,0],surface:[0,0],height:1});assert.equal(taskGuideForWorld(world).id,'RT-PHOTO-HALL-UNVERIFIED');
+});
 function deliverMobile(world, command, observe = () => {}) {
   const plan = mobile.planMobileTask(command, world);
   assert.equal(plan.error, undefined);

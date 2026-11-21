@@ -10,6 +10,10 @@ The main workspace is a persistent mobile kitchen. Cup, Bowl, Counter, Table, Si
 
 ![RoboTrace kitchen environment with live voice conversation and session controls](docs/media/robotrace-kitchen.png)
 
+![Recorded experiment QA with requested-versus-observed results and actual coordinates](docs/media/robotrace-experiment-qa.png)
+
+![Photo-informed office hall generated from a private room reference](docs/media/robotrace-photo-hall.png)
+
 - **[English/Hindi navigation, Stop, pickup and held carrying — 73-second recorded demo](https://github.com/dipakkr/robotrace/blob/main/docs/media/robotrace-english-hindi-demo.mp4)**
 - **[Quiet listening, Pause/Resume, and Stop without leaving the kitchen — 41-second recorded demo](https://github.com/dipakkr/robotrace/blob/main/docs/media/robotrace-session-controls.mp4)**
 
@@ -20,7 +24,9 @@ These are actual application recordings from real Agora/Murf sessions using prer
 - **Voice-first operation:** Agora Conversational AI and RTC carry the conversation; Murf Falcon supplies speech. Live captions show both speakers. Freeform instructions are interpreted against the current scene before entering the controller; the sandbox has no object/destination form or text-entry box.
 - **Distinct robot primitives:** “Go to Sink” navigates only. “Pick up cup” collects and holds it. “Carry cup to Sink” arrives without releasing it. “Place cup at Sink” releases it. These requests do not silently become a default collection assignment.
 - **A changing sandbox:** queue multiple tasks, reposition a software person proxy or movable floor block, and observe actual detours or blocked motion. Blocked tasks require explicit recovery; stop preserves held cargo.
-- **A durable QA console:** run declared baseline, human-authored or explicit LLM symbolic candidates against frozen conditions. Local evaluation history survives reloads and supports reopening actual trajectories. Unrun comparisons remain empty.
+- **Whole-session recording and QA:** Start records both speakers’ recognized speech, separate microphone/assistant audio, requested commands, controller events, sampled coordinates and native task traces. Stop opens a save dialog. **Save & view report** compares the recorded request with actual movement and handling; a successful wrong task still fails. Saved sessions reopen after reload.
+- **Inspect the motion:** Activity and Coordinates tabs show current base/arm pose, route and person clearance. The saved report provides measured distance, request/action association confidence, coordinate scrubbing, native 3D replay, audio playback and JSONL export.
+- **Planner benchmarks:** separately run declared baseline, human-authored or explicit LLM symbolic candidates against frozen conditions. Unrun comparisons remain empty; authored negative examples are labelled.
 - **Evidence and independent analysis:** save native recordings with a SHA-256 seal and independently recomputed recorded-state checks; reopen, replay and export them. One-click saves remain **Unreviewed**. A standalone consumer and browser viewer inspect exported states without the application API.
 - **Workcell environments and scene authoring:** repair-kit, household and sample-routing tasks have retrievable locally authored SOPs. Text, a photo or one selected video frame can propose a bounded scene for operator review. Seeded variations preserve declared parent-scene lineage.
 
@@ -61,14 +67,22 @@ The local controller, baseline evaluations and offline analysis do not require a
 
 ## A three-minute demonstration
 
+The decision: **“Did the robot do what I asked, and can another engineer investigate the failures?”**
+
 | Time | Show | What it establishes |
 | --- | --- | --- |
-| 0:00–0:50 | Click **Start simulation** (or open `/kitchen`), allow microphone access, and ask “Pick up cup and go to sink.” Then ask “Place cup at sink.” | The base moves into reach; pickup, held transport and release are distinct. The terminal shows returned plans and verified events. |
-| 0:50–1:20 | Request another transfer. Use **Human enters** during travel, or **Block destination**, then clear the person and explicitly resume. | A clear detour can continue; a genuinely blocked route pauses. This is a software scenario, not physical safety certification. |
-| 1:20–1:45 | Click **Save mobile evidence**. Open **Saved recordings**, replay the saved trace, export it and return to live. | A real local record and report survive independently of the current scene. Saving does not assert human quality approval. |
-| 1:45–3:00 | Open **QA console → Run matched regression pair**, export the comparison and load it in **Trace analysis**. | Both plans can deliver Cup while one moves and restores the protected Bowl. Recorded history catches the violation despite identical final Bowl state. |
+| 0:00–0:25 | Open `/kitchen`; allow the microphone. Say **“Move forward one meter.”** Open **Coordinates**. | Real Agora/Murf conversation and actual measured base motion. Questions such as “How far is the Counter?” do not authorize movement. |
+| 0:25–1:05 | Say **“Go to Counter”**, **“Pick up the red cup”**, then **“Carry cup to Sink.”** Place/move the person during travel. | Navigation, pickup and held carrying remain distinct. The controller reroutes when a clear alternate path exists and pauses if none does. |
+| 1:05–1:25 | Say **“Place cup at Sink.”** If time permits, request an impossible straight movement such as **“Go straight six meters.”** | Explicit release is required. The current relative controller limit is 5 m: a 6 m request is refused, not silently shortened or marked successful. This is a declared capability limit, not by itself a planner defect. |
+| 1:25–1:45 | Click **Stop simulation → Save & view report**. | Voice closes and the scene stays on `/kitchen`. The entire session, actual commands, states and separate audio clips are persisted. Saving remains Unreviewed. |
+| 1:45–2:25 | Show requested-versus-observed rows, coordinate/time scrubber, a failed request, and native replay/audio. | Native completion does not override the user’s requested goal. Clear refusals and no-action requests remain visible; unclear speech stays unscored. |
+| 2:25–3:00 | Export JSONL and load it into **[Voice experiment analysis](http://127.0.0.1:5189/voice-experiment-analysis.html)**. | A separate program reads actual exported samples, plots positions/displacement, and checks bounded relative requests without the application API. |
 
-Use [the detailed runbook](docs/DEMO_SCRIPTS.md), [QA guide](docs/QA_DEMO.md) and [regression workflow](docs/REGRESSION_WORKFLOW.md) for preparation. The independent viewer is available at [localhost Trace analysis](http://127.0.0.1:5189/trace-analysis.html); its downloaded report works offline.
+A useful regression example was discovered during development: the real voice model mapped “Please move forward one meter” to **Go Home**, completing its chosen zero-distance task. The session report correctly failed the requested 1 m action. The original failed record is retained separately from subsequent fixes and rehearsals. Do not describe a hardcoded negative candidate as a newly discovered model error.
+
+Optional second scene: **[Photo-informed hall](http://127.0.0.1:5189/hall)** is a photo-informed office navigation prototype. Upload/camera drafting proposes bounded furniture footprints and estimated dimensions; review and apply the room before Start simulation. This is an editable estimate, **not a calibrated scan**. No original room photos or identifiable people are included in the repository.
+
+Advanced planner comparisons remain under **Planner benchmarks**. The matched protected-Bowl example demonstrates why final pose alone can conceal a violation. Keep that frozen comparison separate from a judge’s live, differently timed intervention.
 
 ## Architecture and track fit
 
@@ -115,7 +129,7 @@ node scripts/kitchen-route-smoke.mjs  # isolated auto-connect lifecycle; paid st
 
 Real-provider rehearsals have exercised Agora/Murf audio, action tools, completed mobile tasks, saved reports and spoken outcomes using prerecorded input. A real freeform LLM browser check also executed Cup → Sink → Table with two separate native recordings and preserved Bowl throughout. Prerecorded automation is **not** a person's microphone/speaker acceptance test; that gate remains open.
 
-ASR is configured for Deepgram Nova-3 multilingual input, including Hindi, Hinglish and English. The existing Murf voice remains configured for English replies. The combined prerecorded-input live check passed navigation → Hindi Stop → Hindi pickup → held carrying to Sink without release. Hindi recognition produced some mixed-script phonetic errors that the grounded LLM resolved in that run; recognition accuracy is not guaranteed. The observed Hindi Stop transcript-to-acknowledgment time was about 2.1 seconds, not microphone-to-stop latency. Strict direct Stop handling is tested separately and was not observed for that garbled Hindi transcript. [Deepgram documents multilingual code-switching](https://developers.deepgram.com/docs/nova-3-language-prompting); [Murf lists Matthew as an English voice](https://murf.ai/api/docs/voices-styles/voice-library). We do not claim Hindi speech output is configured.
+Input recognition uses Deepgram Nova-3 multilingual ASR, including Hindi, Hinglish and English. The existing Murf voice remains configured for English replies. The combined prerecorded-input live check passed navigation → Hindi Stop → Hindi pickup → held carrying to Sink without release. Hindi recognition produced some mixed-script phonetic errors that the grounded LLM resolved in that run; recognition accuracy is not guaranteed. The observed Hindi Stop transcript-to-acknowledgment time was about 2.1 seconds, not microphone-to-stop latency. Strict direct Stop handling is tested separately and was not observed for that garbled Hindi transcript. [Deepgram documents multilingual code-switching](https://developers.deepgram.com/docs/nova-3-language-prompting); [Murf lists Matthew as an English voice](https://murf.ai/api/docs/voices-styles/voice-library). We do not claim Hindi speech output is configured.
 
 ## Security and limits
 
@@ -123,6 +137,6 @@ Keep secrets only in ignored `.env.local`; never use `VITE_` variables for provi
 
 The hosted preview is a static frontend. Full voice, persistence and provider workflows require the running local backend and callback tunnel. This is a bounded working prototype, not a production cloud robotics platform.
 
-Motion uses known-map routing, analytic kinematics and idealized attachment grasps. It does not provide SLAM, contact dynamics, measured forces, full arm collision checking or validated physical safety. Photo and selected-frame scene drafting currently targets the workcell templates. Photo import into the mobile kitchen is not implemented; no calibrated room reconstruction or recovered human motion is claimed. No model-training gain, LeRobot/RLDS compatibility, recipient ingestion or real-robot transfer is claimed.
+Motion uses known-map routing, analytic kinematics and idealized attachment grasps. It does not provide SLAM, contact dynamics, measured forces, full arm collision checking or validated physical safety. Photo and selected-frame drafting support bounded workcell templates; the separate photo-informed hall proposes an estimated navigable furniture layout. It does not infer calibrated dimensions, reconstruct detailed meshes, recover human motion, or turn an arbitrary image into a physics-validated kitchen. No model-training gain, LeRobot/RLDS compatibility, recipient ingestion or real-robot transfer is claimed.
 
 Research and design context: [Physical AI research](docs/PHYSICAL_AI_RESEARCH.md), [evaluation perspective](docs/PHYSICAL_AI_EVALUATIONS.md), [Indian kitchen references](docs/INDIAN_KITCHEN_REFERENCES.md), [human demonstration bridge](docs/HUMAN_DEMONSTRATION_BRIDGE.md), and [control-system design references](docs/DESIGN_REFERENCES.md).

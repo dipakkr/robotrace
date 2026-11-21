@@ -1,7 +1,13 @@
 import { AgoraCaptionDecoder, captionPacketBytes } from './voice-captions';
 import type { VoiceTranscript } from './voice-captions';
-import { VoiceSpeechControlGate } from './voice-command-parser';
+import { directSpeechCommand, VoiceSpeechControlGate } from './voice-command-parser';
 import type { SpeechControlObservation } from './voice-command-parser';
+import { VoicePauseCommandGate } from './voice-pause-gate';
+import { VoiceAudioRecorder } from './voice-audio-recorder';
+import type { VoiceAudioSegment, VoiceRecordingStatus } from './voice-audio-recorder';
+import type { VoiceCommandContext } from './voice-command-context';
+export type { VoiceAudioSegment, VoiceRecordingStatus } from './voice-audio-recorder';
+export type { VoiceCommandContext } from './voice-command-context';
 /** Optional real Agora RTC + Conversational AI + Murf Falcon adapter.
  * No browser speech-recognition or speech-synthesis fallback is used here.
  */
@@ -28,10 +34,14 @@ export interface VoiceOptions {
   onStatus?: (status: VoiceStatus, message?: string) => void;
   onTranscript?: (transcript: VoiceTranscript) => void;
   onSpeechControl?: (event: SpeechControlObservation) => void;
+  recordAudio?: boolean;
+  onAudioSegment?: (segment: VoiceAudioSegment) => void | Promise<void>;
+  onRecordingStatus?: (status: VoiceRecordingStatus) => void;
 }
 export interface VoiceConnection {
   sessionId: string;
   stop: () => Promise<void>;
+  setPaused: (paused: boolean) => Promise<void>;
 }
 
 const unavailable: IntegrationStatus = {
@@ -60,6 +70,8 @@ let activeConnection: VoiceConnection | null = null;
 let connectionStarting = false;
 let voiceGeneration = 0;
 let pendingStop: (() => Promise<void>) | null = null;
+let pendingPause: ((paused: boolean) => Promise<void>) | null = null;
+let requestedVoicePause = false;
 let captureCaptionPackets = false;
 let captionDiagnostics = { frames: 0, decoded: 0, sizes: [] as number[], types: [] as string[], samples: [] as { bytes: number; base64: string }[] };
 let speechControlDiagnostics: SpeechControlObservation[] = [];
@@ -69,11 +81,12 @@ export function getVoiceCaptionDiagnostics() { return structuredClone(captionDia
 export function getVoiceSpeechControlDiagnostics() { return structuredClone(speechControlDiagnostics); }
 
 export async function startVoiceSession(
-  onCommand: (command: string) => Promise<VoiceCommandResult> | VoiceCommandResult,
+  onCommand: (command: string, context?: VoiceCommandContext) => Promise<VoiceCommandResult> | VoiceCommandResult,
   options: VoiceOptions = {},
 ): Promise<VoiceConnection> {
   if (activeConnection || connectionStarting) throw new Error('A voice session is already connected or starting.');
   connectionStarting = true;
+  requestedVoicePause = false;
   captionDiagnostics = { frames: 0, decoded: 0, sizes: [], types: [], samples: [] };
   speechControlDiagnostics = [];
   const generation = voiceGeneration;
@@ -97,7 +110,34 @@ export async function startVoiceSession(
   let stopped = false;
   let agentAudioConnected = false;
   const captions = new AgoraCaptionDecoder();
-  const speechControls = new VoiceSpeechControlGate(onCommand, event => { speechControlDiagnostics.push(event); speechControlDiagnostics = speechControlDiagnostics.slice(-100); options.onSpeechControl?.(event); });
+  const pauseGate = new VoicePauseCommandGate();
+  pauseGate.setPaused(requestedVoicePause);
+  const remoteAudio = new Set<import('agora-rtc-sdk-ng').IRemoteAudioTrack>();
+  const audioRecorder = options.recordAudio && options.onAudioSegment ? new VoiceAudioRecorder({ onSegment: options.onAudioSegment, onStatus: options.onRecordingStatus }) : null;
+  if (options.recordAudio && !options.onAudioSegment) options.onRecordingStatus?.({ supported: typeof MediaRecorder !== 'undefined', state: 'error', error: 'Audio recording needs an experiment segment receiver.' });
+  const remoteVolume = (volume: number) => { for (const track of remoteAudio) { try { track.setVolume(volume); } catch { remoteAudio.delete(track); } } };
+  let pauseOperation = Promise.resolve();
+  const dispatchCommand = (command: string, context?: VoiceCommandContext) => {
+    const reason = pauseGate.blockReason(command);
+    return reason ? { completed: false, status: 'paused', error: reason } : onCommand(command, context);
+  };
+  const speechControls = new VoiceSpeechControlGate(dispatchCommand, event => { speechControlDiagnostics.push(event); speechControlDiagnostics = speechControlDiagnostics.slice(-100); options.onSpeechControl?.(event); });
+  const setPaused = (paused: boolean) => {
+    requestedVoicePause = paused;
+    const changed = pauseGate.paused !== paused;
+    pauseGate.setPaused(paused); if (changed) speechControls.clear();
+    if (paused) remoteVolume(0);
+    const recordingFlush = paused ? audioRecorder?.pause() : undefined;
+    pauseOperation = pauseOperation.catch(() => {}).then(async () => {
+      if (stopped || generation !== voiceGeneration) return;
+      await microphone?.setMuted(paused);
+      if (recordingFlush) await recordingFlush;
+      if (!paused && !stopped && !requestedVoicePause) audioRecorder?.resume();
+      if (!stopped && !requestedVoicePause) remoteVolume(100);
+    });
+    return pauseOperation;
+  };
+  pendingPause = setPaused;
 
   const onPageHide = () => {
     if (sessionId && !stopped) navigator.sendBeacon('/api/voice/stop', new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }));
@@ -109,9 +149,15 @@ export async function startVoiceSession(
     events?.close();
     captions.clear();
     speechControls.clear();
+    pauseGate.clear(); remoteAudio.clear();
+    if (pendingPause === setPaused) pendingPause = null;
     clearInterval(snapshotTimer);
+    // Stop recorders synchronously, then release SDK tracks. Wait for their final
+    // data events and receiver callbacks before announcing a disconnected session.
+    const recordingFlush = audioRecorder?.stop();
     microphone?.stop(); microphone?.close();
     await client.leave().catch(() => {});
+    if (recordingFlush) await recordingFlush;
     if (activeConnection?.stop === stop) activeConnection = null;
     let remoteStopError = '';
     if (sessionId) {
@@ -138,7 +184,9 @@ export async function startVoiceSession(
     if (transcript) {
       captionDiagnostics.decoded++;
       const scoped = { ...transcript, id: `${sessionId}:${transcript.id}` };
-      speechControls.receive(scoped);
+      pauseGate.observe(scoped);
+      const direct = directSpeechCommand(scoped.text, scoped.final);
+      if (!direct || !pauseGate.blockReason(direct.command)) speechControls.receive(scoped);
       options.onTranscript?.(scoped);
     }
   });
@@ -147,7 +195,7 @@ export async function startVoiceSession(
     try {
       await client.subscribe(user, mediaType);
       if (stopped || generation !== voiceGeneration) return;
-      user.audioTrack?.play();
+      if (user.audioTrack) { remoteAudio.add(user.audioTrack); audioRecorder?.addTrack('assistant', user.audioTrack.getMediaStreamTrack()); user.audioTrack.setVolume(pauseGate.paused ? 0 : 100); user.audioTrack.play(); }
       agentAudioConnected = true;
       options.onStatus?.('live', 'Agora agent audio is connected; speech output uses Murf Falcon.');
     } catch { if (!stopped && generation === voiceGeneration) options.onStatus?.('error', 'Agent audio subscription failed.'); }
@@ -159,6 +207,8 @@ export async function startVoiceSession(
   try {
     const { default: AgoraRTC } = await import('agora-rtc-sdk-ng');
     microphone = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+    audioRecorder?.addTrack('user', microphone.getMediaStreamTrack());
+    if (pauseGate.paused) await microphone.setMuted(true);
     if (stopped || generation !== voiceGeneration) throw new Error('Voice connection cancelled.');
     const session = await jsonRequest<{ sessionId: string; appId: string; channel: string; token: string; uid: number }>('/api/voice/start', { world: options.getWorld?.() ?? null });
     sessionId = session.sessionId;
@@ -170,7 +220,8 @@ export async function startVoiceSession(
       const instruction = JSON.parse((event as MessageEvent<string>).data) as { id: string; command: string };
       let result: VoiceCommandResult;
       try {
-        result = await speechControls.executeTool(instruction.command);
+        const pausedReason = pauseGate.blockReason(instruction.command);
+        result = pausedReason ? { completed: false, status: 'paused', error: pausedReason } : await speechControls.executeTool(instruction.command, instruction.id);
         if (!result || typeof result.completed !== 'boolean') {
           result = { completed: false, error: 'The simulator did not report a verified command outcome.' };
         }
@@ -188,7 +239,7 @@ export async function startVoiceSession(
     snapshotTimer = setInterval(() => {
       if (options.getWorld && !stopped) jsonRequest('/api/voice/context', { sessionId, world: options.getWorld() }).catch(() => {});
     }, 1000);
-    activeConnection = { sessionId, stop };
+    activeConnection = { sessionId, stop, setPaused };
     pendingStop = null;
     connectionStarting = false;
     return activeConnection;
@@ -210,6 +261,14 @@ export async function stopVoiceSession(): Promise<void> {
   voiceGeneration++;
   if (activeConnection) await activeConnection.stop();
   else await pendingStop?.();
+}
+
+/** Keep RTC joined while muting both microphone publication and remote playback. */
+export async function setVoiceSessionPaused(paused: boolean): Promise<void> {
+  if (activeConnection) return activeConnection.setPaused(paused);
+  if (pendingPause) return pendingPause(paused);
+  if (connectionStarting) { requestedVoicePause = paused; return; }
+  throw new Error('No voice session is connected to pause or resume.');
 }
 
 export interface VoiceAnnouncementResult {

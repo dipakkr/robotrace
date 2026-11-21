@@ -43,7 +43,7 @@ function boundedContext(world) {
     bounds: { minX: world.bounds.minX, maxX: world.bounds.maxX, minZ: world.bounds.minZ, maxZ: world.bounds.maxZ },
     cellSize: world.cellSize,
     robot: { position: [...world.robot.position], yaw: world.robot.yaw, radius: world.robot.radius, speed: world.robot.speed, armReach: world.robot.armReach, mode: world.robot.mode, cargoObjectId: world.robot.cargoObjectId },
-    objects: world.objects.map(({ id, label, position, height, station, status }) => ({ id, label, position: [...position], height, station, status })),
+    objects: world.objects.map(({ id, label, color, position, height, station, status }) => ({ id, label, ...(color === 'red' || color === 'green' || color === 'blue' ? { color } : {}), position: [...position], height, station, status })),
     stations: world.stations.map(({ id, label, dock, surface, height }) => ({ id, label, dock: [...dock], surface: [...surface], height })),
     obstacles: world.obstacles.map(({ minX, maxX, minZ, maxZ }, index) => ({ id: `obstacle-${index + 1}`, minX, maxX, minZ, maxZ })),
     human: world.human === null ? null : { position: [...world.human.position], radius: world.human.radius, source: 'scenario-proxy' },

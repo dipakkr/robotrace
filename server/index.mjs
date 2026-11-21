@@ -8,10 +8,12 @@ import { taskGuideForEnvironment, taskGuideForWorld } from './task-guides.mjs';
 import { agoraAuthorization } from './auth.mjs';
 import { createMobileEvidenceStore } from './mobile-store.mjs';
 import { createMobileQaStore, validateMobileQaMetadata, mobileQaSummary } from './mobile-qa-store.mjs';
+import { createExperimentStore, MAX_EXPERIMENT_AUDIO_BYTES } from './experiment-store.mjs';
 import { createWorkflowStore } from './workflows.mjs';
 import { createPlannerService } from './planner-models.mjs';
 import { generateMobileCandidate } from './mobile-planner.mjs';
 import { interpretMobileCommand } from './mobile-intent.mjs';
+import { draftPhotoRoom } from './room-draft.mjs';
 import { evaluateMobilePlanOnServer, evaluatePlanOnServer } from './simulation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +33,11 @@ async function body(req, limit = BODY_LIMIT) {
   if (!raw) return {};
   try { return JSON.parse(raw); } catch { throw Object.assign(new Error('Invalid JSON.'), { status: 400 }); }
 }
+async function audioBody(req) {
+  const chunks=[];let size=0;
+  for await (const chunk of req) {const bytes=Buffer.from(chunk);size+=bytes.length;if(size>MAX_EXPERIMENT_AUDIO_BYTES)throw Object.assign(new Error('Audio clips must be at most 16 MiB.'),{status:413});chunks.push(bytes);}
+  return Buffer.concat(chunks,size);
+}
 
 function authorized(header, secret) {
   const supplied = Buffer.from(header || '');
@@ -42,6 +49,7 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
   const workflows = createWorkflowStore({ dataDirectory });
   const mobileEvidence = createMobileEvidenceStore({ dataDirectory });
   const mobileQa = createMobileQaStore({ dataDirectory });
+  const experiments = createExperimentStore({ dataDirectory });
   const planner = createPlannerService({ env, fetchImpl });
   const sessions = new Map();
   const pendingStops = new Set();
@@ -125,7 +133,7 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
     res.setHeader('Vary', 'Origin');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-RoboTrace-Audio-Metadata');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.writeHead(204); res.end(); return;
     }
@@ -148,6 +156,9 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
       }
       if (req.method === 'POST' && url.pathname === '/api/scenes/draft') {
         respond(res, 200, await planner.draft(await body(req))); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/rooms/draft') {
+        respond(res,200,await draftPhotoRoom({env,fetchImpl,input:await body(req)}));return;
       }
       if (req.method === 'POST' && url.pathname === '/api/mobile-planner/plan') {
         const input = await body(req);
@@ -178,6 +189,32 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         respond(res, 200, await evaluatePlanOnServer(await body(req))); return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/experiments') {
+        respond(res, 201, await experiments.save(await body(req, 20 * 1024 * 1024))); return;
+      }
+      const experimentAudio = url.pathname.match(/^\/api\/experiments\/([^/]+)\/audio\/([^/]+)$/);
+      if (experimentAudio && req.method === 'POST') {
+        let metadata;try {const raw=req.headers['x-robotrace-audio-metadata'];if(typeof raw!=='string'||raw.length>512)throw new Error();metadata=JSON.parse(raw);}catch {respond(res,400,{error:'Provide bounded audio direction and timestamps in X-RoboTrace-Audio-Metadata.'});return;}
+        respond(res,201,await experiments.saveAudio(experimentAudio[1],experimentAudio[2],metadata,req.headers['content-type'],await audioBody(req)));return;
+      }
+      if (experimentAudio && req.method === 'GET') {
+        const value=await experiments.audio(experimentAudio[1],experimentAudio[2]);if(!value){respond(res,404,{error:'Experiment audio not found.'});return;}
+        res.writeHead(200,{'Content-Type':value.clip.mimeType,'Content-Length':value.bytes.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(value.bytes);return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/experiments') {
+        respond(res, 200, await experiments.list()); return;
+      }
+      const experimentExport = url.pathname.match(/^\/api\/experiments\/([^/]+)\/export\.jsonl$/);
+      if (req.method === 'GET' && experimentExport) {
+        const jsonl = await experiments.jsonl(experimentExport[1]);
+        if (jsonl === null) { respond(res, 404, { error: 'Experiment recording not found.' }); return; }
+        res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Disposition': `attachment; filename="robotrace-experiment-${experimentExport[1].toLowerCase()}.jsonl"` }); res.end(jsonl); return;
+      }
+      const experimentRoute = url.pathname.match(/^\/api\/experiments\/([^/]+)$/);
+      if (req.method === 'GET' && experimentRoute) {
+        const record = await experiments.get(experimentRoute[1]);
+        respond(res, record ? 200 : 404, record ? { record, audioManifest: await experiments.audioManifest(record.id) } : { error: 'Experiment recording not found.' }); return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/mobile/episodes') {
         respond(res, 200, { episodes: await mobileEvidence.list() }); return;
       }

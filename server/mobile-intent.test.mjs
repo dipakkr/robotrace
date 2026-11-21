@@ -4,6 +4,7 @@ import {tsImport} from 'tsx/esm/api';
 import {interpretMobileCommand} from './mobile-intent.mjs';
 import {createApiServer} from './index.mjs';
 const {createMobileKitchen,planMobileTask,startMobilePlan}=await tsImport('../src/sim/mobile-navigation.ts',import.meta.url);
+const {createPhotoHallWorld}=await tsImport('../src/sim/photo-hall.ts',import.meta.url);
 const env={LLM_API_KEY:'test-private-llm-key',LLM_MODEL:'gpt-4o-mini'};
 const input=(command='Could you take the cup over to the sink, please?')=>({world:createMobileKitchen(),command});
 function mock(value,inspect=()=>{}){return async(url,options)=>{inspect(JSON.parse(options.body),options,url);return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(value)}}]}));};}
@@ -27,6 +28,16 @@ test('Hindi and Hinglish inputs retain Unicode and current-world grounding in th
  for(const command of ['कप उठाकर सिंक पर जाओ, उसे रखना मत।','cup utha ke sink par jao, abhi neeche mat rakhna']){
   const result=await interpretMobileCommand({env,input:input(command),fetchImpl:mock({tasks:[{objectId:'cup',stationId:'sink',mode:'carry'}],reply:'Carry Cup to Sink without releasing it.'},body=>{assert.equal(JSON.parse(body.messages[1].content).command,command);assert.equal(JSON.parse(body.messages[1].content).world.objects[0].id,'cup');})});assert.deepEqual(result.tasks,[{stationId:'sink',objectId:'cup',mode:'carry'}]);assert.equal(result.completed,false);
  }
+});
+test('prior coordinate-navigation goal stays a point when grounding a later semantic request',async()=>{
+ const scene=input('Please bring the bowl over to the table');scene.world.mission={status:'completed',plan:{command:'Go straight 1 meter',goal:{position:[-3,1.5]}}};
+ await interpretMobileCommand({env,input:scene,fetchImpl:mock({tasks:[{objectId:'bowl',stationId:'table',mode:'deliver'}],reply:'Move Bowl to Table.'},body=>assert.deepEqual(JSON.parse(body.messages[1].content).world.currentMission.goal,{position:[-3,1.5]}))});
+ scene.world.mission.plan.goal={position:[-3,1.5],stationId:'sink'};await assert.rejects(interpretMobileCommand({env,input:scene,fetchImpl:()=>assert.fail('No provider call')}),error=>error.status===400);
+});
+test('photo hall semantic context preserves actual desk labels and cannot invent missing Sink or objects',async()=>{
+ const scene={world:createPhotoHallWorld(),command:'Please head over to the front desk'};
+ const result=await interpretMobileCommand({env,input:scene,fetchImpl:mock({tasks:[{objectId:null,stationId:'counter',mode:null}],reply:'Navigate to Front desk.'},body=>{const {world}=JSON.parse(body.messages[1].content);assert.equal(world.environmentId,'photo-hall');assert.deepEqual(world.objects,[]);assert.equal(world.stations.find(item=>item.id==='counter').label,'Front desk');})});assert.deepEqual(result.tasks,[{stationId:'counter'}]);
+ for(const task of[{stationId:'sink'},{stationId:'counter',objectId:'cup',mode:'carry'}])await assert.rejects(interpretMobileCommand({env,input:scene,fetchImpl:mock({tasks:[task],reply:'Invalid missing entity'})}),error=>error.status===502);
 });
 test('actual carried object and latest mission are supplied for resolving pronouns without invented state',async()=>{
  const scene=input('Put it on the table');scene.world=startMobilePlan(scene.world,planMobileTask('Take cup from counter to sink',scene.world),'immediate').world;scene.world.robot.cargoObjectId='cup';scene.world.objects[0].station='robot';scene.world.objects[0].status='carried';

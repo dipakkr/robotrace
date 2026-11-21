@@ -156,7 +156,7 @@ export async function evaluateMobilePlanOnServer(input) {
  const world={schema:w.schema,seed:w.seed,simTime:w.simTime,revision:w.revision,distanceTravelled:w.distanceTravelled,bounds:{minX:w.bounds.minX,maxX:w.bounds.maxX,minZ:w.bounds.minZ,maxZ:w.bounds.maxZ},cellSize:w.cellSize,
  obstacles:w.obstacles.map((o,index)=>({id:bounded(o.id,80)?o.id:`obstacle-${index}`,label:bounded(o.label,80)?o.label:'Obstacle',minX:o.minX,maxX:o.maxX,minZ:o.minZ,maxZ:o.maxZ})),
  stations:w.stations.map(o=>({id:o.id,label:o.label,dock:[...o.dock],surface:[...o.surface],height:o.height})),
- objects:w.objects.map(o=>({id:o.id,label:o.label,position:[...o.position],height:o.height,station:o.station,status:o.status})),
+ objects:w.objects.map(o=>({id:o.id,label:o.label,...(['red','green','blue'].includes(o.color)?{color:o.color}:{}),position:[...o.position],height:o.height,station:o.station,status:o.status})),
  robot:{position:[...w.robot.position],yaw:w.robot.yaw,radius:w.robot.radius,speed:w.robot.speed,armReach:w.robot.armReach,mode:w.robot.mode,phase:bounded(w.robot.phase,150)?w.robot.phase:'Ready',cargoObjectId:w.robot.cargoObjectId},
  human:w.human?{position:[...w.human.position],radius:w.human.radius,source:'scenario-proxy'}:null,mission:null,events:[],
  simulation:{type:'deterministic-floor-navigation',contactDynamics:false,slam:false,learnedPolicy:false,limitations:['Known-map geometric navigation and idealized kinematic attachment.','No sensor perception, complete arm collision validation, motor-policy training or physical transfer established.']}};

@@ -20,7 +20,7 @@ try {
  await page.waitForFunction(()=>document.querySelector('.mobile-voice [role=status]')?.textContent==='error');
  assert.equal(result.interceptedStarts,2);result.checks.push({name:'Browser navigation reenters kitchen and starts exactly one new connection attempt',passed:true});
  await page.goto('/kitchen?voice=off');await page.getByRole('heading',{name:'Free Kitchen Navigation Environment',exact:true}).waitFor();
- await page.waitForTimeout(500);assert.equal(result.interceptedStarts,2);assert.equal(await page.getByRole('button',{name:'Connect voice',exact:true}).isVisible(),true);
+ await page.waitForTimeout(500);assert.equal(result.interceptedStarts,2);assert.equal(await page.getByRole('button',{name:'Start simulation',exact:true}).isVisible(),true);
  result.checks.push({name:'Explicit QA opt-out prevents paid auto-start while keeping manual connection available',passed:true});
  await page.screenshot({path:'.local/qa/kitchen-route-voice-first.png'});assert.deepEqual(result.errors,[]);result.passed=true;
 }catch(error){result.passed=false;result.failure=error.message;await page.screenshot({path:'.local/qa/kitchen-route-failure.png'}).catch(()=>{});process.exitCode=1;}

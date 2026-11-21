@@ -129,3 +129,10 @@ test('Hindi ASR uses one documented literal keyterm and limits homophone recover
  const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');
  assert.ok(prompt.includes('freshly retrieved unique visible labels'));assert.ok(prompt.includes('Never replace unrelated words globally'));assert.ok(prompt.includes('map लोगों to Stop'));assert.ok(prompt.includes('मत रुको remains a negation'));
 });
+test('platform silence reminders and filler speech are explicitly disabled without disabling listening or captions',()=>{
+ const {properties}=buildAgentConfig({env:fakeEnv,id:'session',channel:'room',agentToken:'rtc',toolSecret:'tool-secret'});
+ assert.deepEqual(properties.parameters.silence_config,{timeout_ms:0});assert.deepEqual(properties.filler_words,{enable:false});
+ assert.equal(properties.parameters.transcript.enable,true);assert.deepEqual(properties.remote_rtc_uids,['1002']);assert.equal(properties.asr.vendor,'deepgram');assert.equal(properties.idle_timeout,60);
+ assert.equal('content' in properties.parameters.silence_config,false,'No inactive-user reminder text is configured');
+ const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');assert.ok(prompt.includes('Empty text, whitespace, silence'));assert.ok(prompt.includes('emit no spoken content, make no tool calls'));
+});

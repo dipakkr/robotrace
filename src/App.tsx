@@ -16,7 +16,7 @@ import { draftSceneFromText } from './sim/scene-authoring';
 import { worldForCommand } from './sim/command-task';
 import type { EvidenceEpisode } from './data/evidence';
 import type { EvaluationCampaign } from './sim/evaluation';
-import type { VoiceCommandResult } from './integrations/voice';
+import type { VoiceCommandResult, VoiceCommandContext } from './integrations/voice';
 import { mergeVoiceTranscripts } from './integrations/voice-captions';
 import type { VoiceTranscript } from './integrations/voice-captions';
 
@@ -48,6 +48,8 @@ function voiceFailureMessage(value: unknown, fallback = 'Voice could not connect
   if (/audio subscription/.test(message)) return 'Assistant audio could not connect. Reset voice and reconnect.';
   if (/rtc disconnected/.test(message)) return 'Voice disconnected unexpectedly. Reset voice and reconnect.';
   if (/not configured|failed to fetch|network|unavailable|local api/.test(message)) return 'Voice service is unavailable. Try again when it is available, or reset the connection.';
+  const upstreamStatus = message.match(/HTTP[ :]+(\d{3})/i)?.[1];
+  if (upstreamStatus) return `Voice service returned HTTP ${upstreamStatus}. Reset voice and try again.`;
   return fallback;
 }
 
@@ -71,9 +73,10 @@ async function downloadEpisode(episode: Episode, report?: ServiceReport) {
 
 export default function App() {
   const [voiceTranscripts, setVoiceTranscripts] = useState<VoiceTranscript[]>([]);
-  const [mobileOpen, setMobileOpen] = useState(() => window.location.pathname.replace(/\/$/, '') === '/kitchen');
+  const [mobileOpen, setMobileOpen] = useState(() => ['/kitchen','/hall'].includes(window.location.pathname.replace(/\/$/, '')));
+  const [mobileEnvironment, setMobileEnvironment] = useState<'kitchen'|'hall'>(() => window.location.pathname.replace(/\/$/, '') === '/hall' ? 'hall' : 'kitchen');
   const [mobileBridgeReady, setMobileBridgeReady] = useState(false);
-  const autoVoicePending = useRef(mobileOpen && new URLSearchParams(window.location.search).get('voice') !== 'off');
+  const autoVoicePending = useRef(mobileOpen && mobileEnvironment === 'kitchen' && new URLSearchParams(window.location.search).get('voice') !== 'off');
   const mobileOpenRef = useRef(false);
   const mobileBridgeRef = useRef<MobileBridge | null>(null);
   const registerMobile = useCallback((bridge: MobileBridge | null) => { mobileBridgeRef.current = bridge; setMobileBridgeReady(Boolean(bridge)); }, []);
@@ -148,7 +151,7 @@ export default function App() {
   const finishRef = useRef<(outcome: Episode['outcome']) => void>(() => {});
   const sayRef = useRef<(text: string, role?: Entry['role']) => void>(() => {});
   const toolResolvers = useRef<((result: unknown) => void)[]>([]);
-  const voiceHandler = useRef<(text: string) => Promise<VoiceCommandResult>>(async () => ({ completed: false }));
+  const voiceHandler = useRef<(text: string, context?: VoiceCommandContext) => Promise<VoiceCommandResult>>(async () => ({ completed: false }));
 
   autoApproveRef.current = autoApprove;
   autoApprovalPausedRef.current = autoApprovalPaused;
@@ -422,8 +425,8 @@ export default function App() {
     setEpisodes(previous => previous.map(episode => episode.id === currentEpisode.id ? { ...episode, savedId, reportId: savedReport?.id } : episode));
     setPublishing(false); setPublishedTo(destination); setModal(savedReport ? 'report' : null); setGuideStep(4); say(`Episode ${currentEpisode.id} saved without a human-review claim to ${destination}. A JSON export includes its states, actions, and simulation limitations.`);
   };
-  voiceHandler.current = async (text: string) => {
-    if (mobileOpenRef.current && mobileBridgeRef.current) return mobileBridgeRef.current.command(text);
+  voiceHandler.current = async (text: string, context?: VoiceCommandContext) => {
+    if (mobileOpenRef.current && mobileBridgeRef.current) return mobileBridgeRef.current.command(text, context);
     if (/^(yes|approve|approve and run|run plan|execute plan|go ahead)[.!\s]*$/i.test(text.trim())) {
       if (modal === 'reset') { reset(); return { completed: true, summary: 'The explicitly approved scene reset completed.', world: worldRef.current }; }
       if (pendingEnvironment && modal === 'environments') {
@@ -484,10 +487,14 @@ export default function App() {
     setVoiceErrorMessage(null); setVoiceState('connecting');
     try {
       const voice = await import('./integrations/voice');
-      await voice.startVoiceSession(text => voiceHandler.current(text), {
+      const recordingReceiver = mobileOpenRef.current ? mobileBridgeRef.current : null;
+      await voice.startVoiceSession((text, context) => voiceHandler.current(text, context), {
+        recordAudio: Boolean(recordingReceiver),
+        onAudioSegment: segment => recordingReceiver?.recordAudio(segment),
+        onRecordingStatus: status => recordingReceiver?.recordingStatus(status),
         getWorld: () => mobileOpenRef.current && mobileBridgeRef.current ? mobileBridgeRef.current.getWorld() : ({ ...worldRef.current, executionReceipt: executionReceiptRef.current, simulationAutoApproval: false, simulationExecutionMode: 'immediate' }),
         onStatus: (status, message) => { if (operation !== voiceOperationRef.current) return; setVoiceState(status); if (status === 'error') { const safe = voiceFailureMessage(message); setVoiceErrorMessage(safe); setNotice(safe); } },
-        onTranscript: transcript => { if (operation === voiceOperationRef.current) setVoiceTranscripts(previous => mergeVoiceTranscripts(previous, transcript)); },
+        onTranscript: transcript => { recordingReceiver?.recordTranscript(transcript); if (operation === voiceOperationRef.current) setVoiceTranscripts(previous => mergeVoiceTranscripts(previous, transcript)); },
       });
       if (operation !== voiceOperationRef.current) return;
       setVoiceState(previous => previous === 'live' ? previous : 'connected'); setModal(null); say('Agora RTC joined. The status will update when the conversational agent audio arrives.');
@@ -508,17 +515,18 @@ export default function App() {
     } catch { const message = 'Voice reset failed. Please retry Reset voice.'; setVoiceState('error'); setVoiceErrorMessage(message); setNotice(message); }
     finally { voiceResettingRef.current = false; voiceAttemptRef.current = false; }
   };
-  const disconnectVoice = async () => { if (voiceAttemptRef.current) return; voiceAttemptRef.current = true; voiceOperationRef.current++; try { const voice = await import('./integrations/voice'); await voice.stopVoiceSession(); setVoiceState('disconnected'); setVoiceErrorMessage(null); } catch { const message = 'Voice disconnect could not be confirmed. Reset voice before reconnecting.'; setVoiceState('error'); setVoiceErrorMessage(message); setNotice(message); } finally { voiceAttemptRef.current = false; } };
+  const disconnectVoice = async () => { if (voiceResettingRef.current) return; voiceAttemptRef.current = true; voiceOperationRef.current++; try { const voice = await import('./integrations/voice'); await voice.stopVoiceSession(); setVoiceState('disconnected'); setVoiceErrorMessage(null); } catch { const message = 'Voice disconnect could not be confirmed. Reset voice before reconnecting.'; setVoiceState('error'); setVoiceErrorMessage(message); setNotice(message); } finally { voiceAttemptRef.current = false; } };
 
-  const openKitchen = async () => {
+  const openKitchen = async (environment: 'kitchen'|'hall' = 'kitchen') => {
     if (voiceState === 'live' || voiceState === 'connected') await disconnectVoice();
     const quiet = new URLSearchParams(window.location.search).get('voice') === 'off';
-    window.history.pushState({}, '', quiet ? '/kitchen?voice=off' : '/kitchen');
-    autoVoicePending.current = !quiet; setMobileOpen(true);
+    const path = environment === 'hall' ? '/hall' : '/kitchen';window.history.pushState({}, '', quiet ? `${path}?voice=off` : path);
+    setMobileEnvironment(environment);setMobileBridgeReady(false);autoVoicePending.current = environment === 'kitchen' && !quiet; setMobileOpen(true);
   };
   const leaveKitchen = () => {
     autoVoicePending.current = false; voiceOperationRef.current++;
-    void import('./integrations/voice').then(voice => voice.stopVoiceSession()).catch(() => {}).finally(() => { setVoiceState('disconnected'); voiceAttemptRef.current = false; });
+    const closingReceiver = mobileBridgeRef.current;
+    void import('./integrations/voice').then(voice => voice.stopVoiceSession()).then(() => closingReceiver?.finishExperiment()).catch(() => {}).finally(() => { setVoiceState('disconnected'); voiceAttemptRef.current = false; });
     window.history.pushState({}, '', '/'); setMobileOpen(false);
   };
   useEffect(() => {
@@ -528,25 +536,26 @@ export default function App() {
   }, [mobileOpen, mobileBridgeReady, backendOnline]);
   useEffect(() => {
     const onRoute = () => {
-      const kitchen = window.location.pathname.replace(/\/$/, '') === '/kitchen';
-      autoVoicePending.current = kitchen && new URLSearchParams(window.location.search).get('voice') !== 'off';
+      const path=window.location.pathname.replace(/\/$/, '');const kitchen=['/kitchen','/hall'].includes(path);setMobileEnvironment(path==='/hall'?'hall':'kitchen');
+      autoVoicePending.current = path === '/kitchen' && new URLSearchParams(window.location.search).get('voice') !== 'off';
       setMobileOpen(kitchen);
       if (!kitchen) {
         voiceOperationRef.current++;
-        void import('./integrations/voice').then(voice => voice.stopVoiceSession()).catch(() => {}).finally(() => { setVoiceState('disconnected'); voiceAttemptRef.current = false; });
+        const closingReceiver = mobileBridgeRef.current;
+        void import('./integrations/voice').then(voice => voice.stopVoiceSession()).then(() => closingReceiver?.finishExperiment()).catch(() => {}).finally(() => { setVoiceState('disconnected'); voiceAttemptRef.current = false; });
       }
     };
     window.addEventListener('popstate', onRoute); return () => window.removeEventListener('popstate', onRoute);
   }, []);
 
-  if (mobileOpen) return <Suspense fallback={<div className="suite-loading">Loading mobile kitchen…</div>}><MobileKitchen onBack={leaveKitchen} onBridge={registerMobile} voiceStatus={voiceState} voiceTranscripts={voiceTranscripts} voiceErrorMessage={voiceErrorMessage} onResetVoice={() => void recoverVoice()} onVoice={() => void connectVoice()} onDisconnect={() => void disconnectVoice()} announce={text => narrationRef.current(text)}/></Suspense>;
+  if (mobileOpen) return <Suspense fallback={<div className="suite-loading">Loading mobile environment…</div>}><MobileKitchen key={mobileEnvironment} environment={mobileEnvironment} onBack={leaveKitchen} onBridge={registerMobile} voiceStatus={voiceState} voiceTranscripts={voiceTranscripts} voiceErrorMessage={voiceErrorMessage} onResetVoice={() => void recoverVoice()} onVoice={() => connectVoice()} onDisconnect={() => disconnectVoice()} onPauseVoice={async paused => { const voice = await import('./integrations/voice'); await voice.setVoiceSessionPaused(paused); }} announce={text => narrationRef.current(text)}/></Suspense>;
 
   return (
     <div className="studio" data-layout={layout} data-sidebar={sidebarCollapsed ? 'collapsed' : 'open'} data-copilot={copilotCollapsed ? 'collapsed' : 'open'}>
       <header className="topbar">
         <a className="brand" href="#" onClick={event => event.preventDefault()} aria-label="RoboTrace home"><span className="brand-mark"><Blocks size={22} strokeWidth={1.7}/></span><span>RoboTrace<span className="brand-dot">.</span></span></a>
         <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14}/><span>Demonstration lab</span><ChevronRight size={14}/><strong>Workcell 01</strong><ChevronDown size={13}/></div>
-        <div className="topbar-actions"><button className="button button-secondary" disabled={busy || recording || Boolean(replay)} aria-label="Mobile kitchen" onClick={() => void openKitchen()}>Start simulation</button><div className="layout-switcher" role="group" aria-label="Presentation layout">{(['studio', 'copilot', 'simulation'] as LayoutMode[]).map(mode => <button key={mode} className={layout === mode ? 'selected' : ''} aria-pressed={layout === mode} onClick={() => { setLayout(mode); if (mode === 'copilot') setCopilotCollapsed(false); }}>{mode === 'studio' ? <Layers3 size={13}/> : mode === 'copilot' ? <AudioLines size={13}/> : <Expand size={13}/>}<span>{mode === 'studio' ? 'Studio' : mode === 'copilot' ? 'Copilot' : 'Simulation'}</span></button>)}</div><button className="icon-button" title="Saved episode library" aria-label="Saved episode library" onClick={() => setModal('library')}><FolderOpen size={17}/></button><button className="icon-button" title="Human and AI planner comparison" aria-label="Human and AI planner comparison" onClick={() => setModal('planners')}><ListChecks size={17}/></button><button className="icon-button" title="Controller evaluation" aria-label="Controller evaluation" onClick={() => setModal('evaluation')}><Activity size={17}/></button><button className="icon-button" title="Release readiness" aria-label="Release readiness" onClick={() => setModal('readiness')}><ShieldCheck size={17}/></button><span className="badge simulation-badge"><Box size={12}/> Simulation</span><button className="icon-button" title="Open setup and help" aria-label="Open help" onClick={() => setModal('help')}><CircleHelp size={18}/></button><button className="avatar" onClick={() => setModal('connections')} title="Connection settings">DL</button></div>
+        <div className="topbar-actions"><button className="button button-secondary" disabled={busy || recording || Boolean(replay)} aria-label="Mobile kitchen" onClick={() => void openKitchen()}>Start simulation</button><button className="button button-secondary" disabled={busy || recording || Boolean(replay)} onClick={() => void openKitchen('hall')}>Photo room</button><div className="layout-switcher" role="group" aria-label="Presentation layout">{(['studio', 'copilot', 'simulation'] as LayoutMode[]).map(mode => <button key={mode} className={layout === mode ? 'selected' : ''} aria-pressed={layout === mode} onClick={() => { setLayout(mode); if (mode === 'copilot') setCopilotCollapsed(false); }}>{mode === 'studio' ? <Layers3 size={13}/> : mode === 'copilot' ? <AudioLines size={13}/> : <Expand size={13}/>}<span>{mode === 'studio' ? 'Studio' : mode === 'copilot' ? 'Copilot' : 'Simulation'}</span></button>)}</div><button className="icon-button" title="Saved episode library" aria-label="Saved episode library" onClick={() => setModal('library')}><FolderOpen size={17}/></button><button className="icon-button" title="Human and AI planner comparison" aria-label="Human and AI planner comparison" onClick={() => setModal('planners')}><ListChecks size={17}/></button><button className="icon-button" title="Controller evaluation" aria-label="Controller evaluation" onClick={() => setModal('evaluation')}><Activity size={17}/></button><button className="icon-button" title="Release readiness" aria-label="Release readiness" onClick={() => setModal('readiness')}><ShieldCheck size={17}/></button><span className="badge simulation-badge"><Box size={12}/> Simulation</span><button className="icon-button" title="Open setup and help" aria-label="Open help" onClick={() => setModal('help')}><CircleHelp size={18}/></button><button className="avatar" onClick={() => setModal('connections')} title="Connection settings">DL</button></div>
       </header>
 
       <div className="studio-body">
