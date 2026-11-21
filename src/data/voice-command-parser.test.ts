@@ -1,0 +1,104 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { directSpeechCommand, VoiceSpeechControlGate } from '../integrations/voice-command-parser';
+import type { VoiceTranscript } from '../integrations/voice-captions';
+import type { VoiceCommandResult } from '../integrations/voice';
+import { advanceMobileWorld, applyMobileControl, createMobileKitchen, mobileGoalChecks, planMobileTask, startMobilePlan } from '../sim/mobile-navigation';
+const transcript = (id: string, text: string, final = true): VoiceTranscript => ({ id, text, final, speaker: 'user', receivedAt: 1000 });
+
+test('strict stop imperatives include repetitions but exclude negation, quoted examples and conditions', () => {
+  for (const text of ['Stop', 'Stop.', 'No. Stop. Stop.', 'Please stop', 'Stop robot', 'Stop the robot now please', 'stop stop stop']) assert.deepEqual(directSpeechCommand(text, false), { kind: 'stop', command: 'stop' }, text);
+  for (const text of ["Don't stop", 'Do not stop', 'Please do not stop', 'If I say stop', 'When I say stop stop the robot', 'Can you explain stop?', 'No stopping', 'Stop at the sink', 'Stop if someone enters', 'I said stop earlier', 'Stop cup from falling', 'Never stop']) assert.equal(directSpeechCommand(text, true), null, text);
+});
+
+test('navigation fast path requires final literal station movement and never adds a payload', () => {
+  for (const [text, command] of [['Go sink', 'Go to Sink'], ['Go to sync.', 'Go to Sink'], ['Please go to the table', 'Go to Table'], ['Can you go to table?', 'Go to Table'], ['Could you please go to the counter?', 'Go to Counter'], ['Would you go to sink please?', 'Go to Sink'], ['Navigate to counter please', 'Go to Counter'], ['Return home', 'Go to Home'], ['Go to dock', 'Go to Home']]) {
+    assert.equal(directSpeechCommand(text, false), null); assert.deepEqual(directSpeechCommand(text, true), { kind: 'navigation', command });
+  }
+  for (const text of ['Take cup to sink', 'Go to sink with cup', 'Go to sink and pick cup', 'Do not go to sink', 'Could you not go to sink', 'If I say go to sink', 'Go to table or sink', 'Go to refrigerator']) assert.equal(directSpeechCommand(text, true), null, text);
+});
+
+test('Stop invokes synchronously on a partial once per turn without waiting for an LLM or receipt', async () => {
+  const calls: string[] = []; let finish!: (value: VoiceCommandResult) => void;
+  const gate = new VoiceSpeechControlGate(command => { calls.push(command); return new Promise(resolve => { finish = resolve; }); }, undefined, () => 1003);
+  const observed = gate.receive(transcript('turn-stop', 'No. Stop. Stop.', false));
+  assert.deepEqual(calls, ['stop']); assert.equal(observed?.dispatchDelayMs, 3);
+  gate.receive(transcript('turn-stop', 'Stop', true)); assert.equal(calls.length, 1);
+  finish({ completed: true, summary: 'Control stop applied.', world: { robot: { mode: 'stopped' } } });
+  const response = await gate.executeTool('please stop');
+  assert.equal(response.completed, true); assert.equal(response.speechControlDeduplicated, true); assert.equal(calls.length, 1);
+});
+
+test('navigation dispatch executes once and rejects an LLM attempt to add cup delivery', async () => {
+  const calls: string[] = [];
+  const gate = new VoiceSpeechControlGate(command => { calls.push(command); return { completed: false, status: 'running', summary: 'Base navigation started.' }; });
+  gate.receive(transcript('nav', 'Go to sink', false)); assert.equal(calls.length, 0);
+  gate.receive(transcript('nav', 'Go to sink', true)); assert.deepEqual(calls, ['Go to Sink']);
+  const duplicate = await gate.executeTool('navigate to the sink'); assert.equal(duplicate.speechControlDeduplicated, true);
+  const embellished = await gate.executeTool('Take cup from counter to sink'); assert.equal(embellished.status, 'rejected'); assert.match(embellished.error!, /navigation only/);
+  assert.deepEqual(calls, ['Go to Sink']);
+  gate.receive(transcript('pickup-next', 'Pick up the cup', false));
+  const next = await gate.executeTool('Take cup from counter to sink'); assert.equal(next.status, 'running');
+  assert.deepEqual(calls, ['Go to Sink', 'Take cup from counter to sink']);
+});
+
+test('stale movement and automatic resume after Stop are blocked until a new actual user turn', async () => {
+  const calls: string[] = [];
+  const gate = new VoiceSpeechControlGate(command => { calls.push(command); return { completed: true, summary: `Control ${command} applied.` }; });
+  gate.receive(transcript('stop', 'Stop', false));
+  gate.receive({ ...transcript('assistant:1', 'Going to the sink'), speaker: 'assistant' });
+  assert.equal((await gate.executeTool('Go to Sink')).status, 'rejected'); assert.equal((await gate.executeTool('resume')).status, 'rejected');
+  assert.deepEqual(calls, ['stop']);
+  gate.receive(transcript('resume-next', 'Resume')); await gate.executeTool('resume'); assert.deepEqual(calls, ['stop', 'resume']);
+});
+
+test('Stop overrides an earlier direct navigation even if ASR reuses its turn identity', async () => {
+  const calls: string[] = []; const gate = new VoiceSpeechControlGate(command => { calls.push(command); return { completed: true }; });
+  gate.receive(transcript('same-turn', 'Go to Sink'));
+  gate.receive(transcript('same-turn', 'Stop', false)); gate.receive(transcript('same-turn', 'Stop', true));
+  assert.deepEqual(calls, ['Go to Sink', 'stop']); assert.equal((await gate.executeTool('Go to Sink')).status, 'rejected');
+});
+
+test('a matching tool that beats the final transcript is reused and failed handlers remain failures', async () => {
+  const calls: string[] = [];
+  const gate = new VoiceSpeechControlGate(command => { calls.push(command); return { completed: false, error: 'The current mission is paused.' }; });
+  gate.receive(transcript('nav', 'Go to', false));
+  await gate.executeTool('Go to Sink'); gate.receive(transcript('nav', 'Go to Sink', true));
+  const result = await gate.executeTool('Go Sink'); assert.equal(calls.length, 1); assert.equal(result.completed, false); assert.match(result.error!, /paused/);
+  const throwing = new VoiceSpeechControlGate(() => { throw new Error('Handler unavailable'); });
+  throwing.receive(transcript('stop', 'Stop')); assert.equal((await throwing.executeTool('stop')).error, 'Handler unavailable');
+});
+
+test('Hindi and Hinglish strict stops exclude negated, conditional and object-specific requests', () => {
+  for (const text of ['रुको', 'रुक जाओ', 'रोबोट, रुक जाओ।', 'रोक दो', 'बस रोक दो', 'कृपया रोको', 'रुको। रुको।', 'stop karo', 'ruk jao', 'robot ruk jao', 'bas stop kar do']) assert.deepEqual(directSpeechCommand(text, false), { kind: 'stop', command: 'stop' }, text);
+  for (const text of ['मत रुको', 'रुको मत', 'रोकना मत', 'अगर मैं रुकने को कहूँ', 'अगर मैं कहूँ रुको', 'लोगों', 'rukna mat', 'mat ruko', 'stop mat karo', 'कप को गिरने से रोक दो']) assert.equal(directSpeechCommand(text, true), null, text);
+});
+
+test('Hindi and Hinglish navigation only dispatches a final exact station imperative', () => {
+  for (const [text, command] of [['sink par jao', 'Go to Sink'], ['सिंक पर जाओ', 'Go to Sink'], ['टेबल पर जाओ', 'Go to Table'], ['काउंटर तक जाओ', 'Go to Counter'], ['घर जाओ', 'Go to Home'], ['table pe jao please', 'Go to Table']]) {
+    assert.equal(directSpeechCommand(text, false), null); assert.deepEqual(directSpeechCommand(text, true), { kind: 'navigation', command });
+  }
+  for (const text of ['कप को सिंक पर ले जाओ', 'cup sink par le jao', 'सिंक पर मत जाओ', 'अगर सिंक पर जाओ', 'table par jao aur cup uthao']) assert.equal(directSpeechCommand(text, true), null, text);
+});
+
+test('actual native navigation stays empty, Hindi Stop freezes motion, and a new pickup can later carry without release', async () => {
+  let world = createMobileKitchen(); const initialObjects = structuredClone(world.objects), calls: string[] = [];
+  const gate = new VoiceSpeechControlGate(command => {
+    calls.push(command); const plan = planMobileTask(command, world);
+    const result = plan.control ? applyMobileControl(world, plan.control) : startMobilePlan(world, plan, 'immediate');
+    world = result.world; return { completed: !result.error && Boolean(plan.control), error: result.error, world };
+  });
+  gate.receive(transcript('native-nav', 'Go to sink')); assert.equal(world.mission?.plan.goal?.objectId, undefined);
+  world = advanceMobileWorld(world, 1).world; assert.deepEqual(world.objects, initialObjects);
+  gate.receive(transcript('native-stop', 'रुको', false)); assert.equal(world.robot.mode, 'stopped');
+  const stopped = structuredClone(world); world = advanceMobileWorld(world, 1).world; assert.deepEqual(world, stopped);
+  await gate.executeTool('Take cup from counter to sink'); assert.deepEqual(calls, ['Go to Sink', 'stop']);
+  gate.receive(transcript('native-pickup', 'Pick up cup')); await gate.executeTool('Pick up cup');
+  for (let i = 0; i < 1000 && world.robot.mode === 'running'; i++) world = advanceMobileWorld(world, .1).world;
+  assert.equal(world.robot.cargoObjectId, 'cup'); assert.ok(mobileGoalChecks(world).every(check => check.passed));
+  gate.receive(transcript('native-held-nav', 'सिंक पर जाओ'));
+  assert.equal(world.mission?.plan.goal?.objectId, undefined);
+  for (let i = 0; i < 1000 && world.robot.mode === 'running'; i++) world = advanceMobileWorld(world, .1).world;
+  assert.equal(world.robot.cargoObjectId, 'cup'); assert.equal(world.objects[0].station, 'robot');
+  assert.equal(world.events.filter(event => event.kind === 'place').length, 0); assert.ok(mobileGoalChecks(world).every(check => check.passed));
+});

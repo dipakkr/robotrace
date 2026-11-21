@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tsImport } from 'tsx/esm/api';
 import { createMobileEvidenceStore } from './mobile-store.mjs';
+import { createApiServer } from './index.mjs';
 
 const nav = await tsImport('../src/sim/mobile-navigation.ts', import.meta.url);
 const { createMobileEvidence } = await tsImport('../src/data/mobile-evidence.ts', import.meta.url);
@@ -95,6 +96,40 @@ test('one-click operator saves retain unreviewed provenance while independently 
   await assert.rejects(store.submit({ evidence: fixture(), review: { ...direct, identityVerified: true } }), badInput);
 });
 
+function primitiveFixture(initial,command){
+ const plan=nav.planMobileTask(command,initial);assert.equal(plan.error,undefined,command);
+ let current=nav.startMobilePlan(initial,plan,'immediate').world;
+ const samples=[{time:initial.simTime,world:structuredClone(initial)}];
+ for(let tick=0;tick<1000;tick++){const next=nav.advanceMobileWorld(current,.1);current=next.world;samples.push({time:current.simTime,world:structuredClone(current)});if(next.done||next.blocked)break;}
+ assert.equal(current.mission.status,'completed',command);return seal(createMobileEvidence(initial,samples,current,null));
+}
+test('native API saves pickup, carry-without-release and later placement as distinct independently checked primitive goals',async t=>{
+ const server=createApiServer({env:{},dataDirectory:await temporary(t),fetchImpl:()=>{assert.fail('No provider calls allowed');}});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const base=`http://127.0.0.1:${server.address().port}`;let current=nav.createMobileKitchen();const originalBowl=structuredClone(current.objects[1]);
+ const reports=[];
+ for(const [command,station,hold,pickups,placements] of [['Pick up cup','counter',true,1,0],['Carry cup to sink','sink',true,0,0],['Place cup at sink','sink',false,0,1]]){
+  const evidence=primitiveFixture(current,command);current=evidence.payload.finalWorld;
+  const response=await fetch(`${base}/api/mobile/episodes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({evidence,review:{approved:false,identityVerified:false,source:'operator-save'}})});const saved=await response.json();
+  assert.equal(response.status,201,JSON.stringify(saved));const report=saved.report;reports.push(report);
+  assert.equal(report.accepted,true,JSON.stringify(report.checks));assert.equal(report.goal.stationId,station);assert.equal(report.goal.hold===true,hold);assert.equal(report.metrics.completedPickups,pickups);assert.equal(report.metrics.completedPlacements,placements);
+  assert.deepEqual(current.objects.find(item=>item.id==='bowl'),originalBowl);
+  if(hold){assert.equal(current.robot.cargoObjectId,'cup');assert.equal(current.objects[0].station,'robot');assert.match(report.summary,/remains carried; no release or delivery/);}
+  else{assert.equal(current.robot.cargoObjectId,null);assert.equal(current.objects[0].station,'sink');}
+ }
+ assert.equal(new Set(reports.map(report=>report.id)).size,3);
+ const evidence=primitiveFixture(nav.createMobileKitchen(),'Pick up cup');evidence.payload.finalWorld.mission.plan.goal.hold=false;
+ const rejected=await fetch(`${base}/api/mobile/episodes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({evidence:seal(evidence.payload),review})});assert.equal(rejected.status,400);
+});
+test('holding cargo at Home is valid custody transport while releasing at Home remains unsupported',async t=>{
+ const store=createMobileEvidenceStore({dataDirectory:await temporary(t)});
+ const pickup=primitiveFixture(nav.createMobileKitchen(),'Pick up cup');
+ const carry=primitiveFixture(pickup.payload.finalWorld,'Carry cup to home');
+ const saved=await store.submit({evidence:carry,review:{approved:false,identityVerified:false,source:'operator-save'}});
+ assert.equal(saved.report.accepted,true);assert.equal(saved.report.goal.hold,true);assert.equal(saved.report.goal.stationId,'home');assert.equal(saved.report.metrics.completedPlacements,0);assert.match(saved.report.summary,/no release or delivery/);
+ assert.ok(nav.planMobileTask('Place cup at home',carry.payload.finalWorld).error);
+});
+
 test('stopped, failed and human-blocked recordings persist as nonaccepted despite forged posted scores', async t => {
   const store = createMobileEvidenceStore({ dataDirectory: await temporary(t) });
   for (const [options, outcome] of [[{ stop: true }, 'stopped'], [{ deep: true }, 'failed'], [{ human: true }, 'paused']]) {
@@ -139,7 +174,7 @@ test('the store rejects malformed worlds, chronology, terminal endpoints and ove
     payload => { payload.trajectory[2].world.mission.completedSteps = 99; },
     payload => { payload.trajectory.at(-1).world = structuredClone(payload.initialWorld); },
     payload => { payload.trajectory = Array.from({ length: 1501 }, () => payload.trajectory[0]); },
-    payload => { payload.extra = 'x'.repeat(1024 * 1024); },
+    payload => { payload.extra = 'x'.repeat(8 * 1024 * 1024); },
   ];
   for (const change of changes) {
     const evidence = fixture(); change(evidence.payload);
@@ -251,4 +286,30 @@ test('a navigation-only mission cannot drop and reload its initially held payloa
   assert.equal(saved.report.checks.find(check => check.id === 'cargo-custody').passed, false);
   assert.equal(saved.report.metrics.completedPlacements, 1);
   assert.equal(saved.report.metrics.completedPickups, 1);
+});
+
+function liveBlockFixture(initial=nav.createMobileKitchen(),command='Take cup from counter to sink') {
+ let world=nav.startMobilePlan(initial,nav.planMobileTask(command,initial),'immediate').world;
+ const samples=[{time:initial.simTime,world:structuredClone(initial)}];let changed=false;
+ for(let tick=0;tick<500;tick++){
+  const next=nav.advanceMobileWorld(world,.1);world=next.world;
+  samples.push({time:world.simTime,world:structuredClone(world)});
+  if(!changed&&world.robot.cargoObjectId){const result=nav.setMobileFloorObstacle(world,[-2,1.7]);assert.equal(result.error,undefined);world=result.world;samples.push({time:world.simTime,world:structuredClone(world)});changed=true;}
+  if(next.done)break;
+ }
+ return {world,evidence:seal(createMobileEvidence(initial,samples,world,null))};
+}
+test('direct save accepts actual reserved-block intervention and repeated task from current completed state',async t=>{
+ const store=createMobileEvidenceStore({dataDirectory:await temporary(t)}),direct={approved:false,identityVerified:false,source:'operator-save'};
+ const first=liveBlockFixture(),saved=await store.submit({evidence:first.evidence,review:direct});assert.equal(saved.report.accepted,true);assert.equal(saved.report.review.approved,false);
+ assert.equal(saved.report.provenance.sceneConditions,'live-operator-layout-interventions');assert.equal(saved.report.provenance.layoutInterventions[0].action,'placed');assert.equal(saved.report.provenance.matchedComparison,false);
+ const second=liveBlockFixture(first.world,'Bring cup to table');const next=await store.submit({evidence:second.evidence,review:direct});assert.equal(next.report.accepted,true);assert.equal(next.report.goal.stationId,'table');assert.ok(second.evidence.payload.initialWorld.simTime>0);assert.notEqual(next.id,saved.id);
+});
+test('reserved block cannot bypass static furniture, recorded control or live provenance guards',async t=>{
+ const store=createMobileEvidenceStore({dataDirectory:await temporary(t)}),original=liveBlockFixture().evidence;
+ for(const mutate of[
+  payload=>{payload.trajectory[2].world.obstacles[0].minX-=.1;},
+  payload=>{for(const sample of payload.trajectory)sample.world.events=sample.world.events.filter(event=>!event.message.startsWith('Sandbox floor block'));payload.finalWorld=structuredClone(payload.trajectory.at(-1).world);},
+  payload=>{payload.provenance.sceneConditions='fixed-recorded-layout';},
+ ]){const evidence=structuredClone(original);mutate(evidence.payload);await assert.rejects(store.submit({evidence:seal(evidence.payload),review:{approved:false,identityVerified:false,source:'operator-save'}}),badInput);}
 });

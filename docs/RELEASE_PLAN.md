@@ -1,8 +1,8 @@
-# TeachTrace release plan and acceptance rubric
+# RoboTrace release plan and acceptance rubric
 
 ## Product decision
 
-TeachTrace is a voice operations console for robotics demonstration collectors. It helps an employee turn an approved work instruction into a reproducible simulated attempt, inspect failures, and deliver a reviewed evidence package to their robotics team.
+RoboTrace is a voice operations console for robotics demonstration collectors. It helps an employee turn an approved work instruction into a reproducible simulated attempt, inspect failures, and deliver a reviewed evidence package to their robotics team.
 
 The immediate problem is fragmented collection operations: instructions, environment setup, robot actions, outcome checks and review evidence are disconnected. Our output is a task-linked, reviewable episode with its scene, trajectory, checks, provenance and service report. The robot is a visible execution surface; the employee workflow is the product.
 

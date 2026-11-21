@@ -1,6 +1,6 @@
 # From household demonstrations to reviewed robot tasks
 
-Live sources checked **21 November 2026**. This document separates verified company/research statements, TeachTrace's current implementation, and a proposed pilot. It does not imply a Pronto partnership, a buyer commitment, or an improvement to a frontier robot model.
+Live sources checked **21 November 2026**. This document separates verified company/research statements, RoboTrace's current implementation, and a proposed pilot. It does not imply a Pronto partnership, a buyer commitment, or an improvement to a frontier robot model.
 
 **The useful product direction is a demonstration-to-task review and evaluation workbench.** A collector brings a permitted household reference; an operator checks the intended objects, goals and exceptions; competing plans are evaluated on the same reviewed scenario; another engineer receives reproducible evidence. The present version supplies the task/evaluation layer. It does not automatically turn a phone recording into robot-control training data.
 
@@ -12,7 +12,7 @@ Its official **FAQ** describes Verified footage more narrowly as dispute-related
 
 Use this careful pitch wording:
 
-> Pronto publishes terms contemplating household recordings for AI-related uses, although its public descriptions differ. Robotics research shows ways to use structured demonstrations. TeachTrace explores review and evaluation between a permitted reference and an accepted task.
+> Pronto publishes terms contemplating household recordings for AI-related uses, although its public descriptions differ. Robotics research shows ways to use structured demonstrations. RoboTrace explores review and evaluation between a permitted reference and an accepted task.
 
 Do not say “Pronto sends its data into our system,” “Pronto works with a particular lab,” or “our videos train that lab's robots.” None of those claims is established here. The business opportunity is a hypothesis to validate with collection teams and robotics engineers, rather than a closed partnership.
 
@@ -20,7 +20,7 @@ Do not say “Pronto sends its data into our system,” “Pronto works with a p
 
 A recording supplies observations of a human completing a task. For a robot learner, the missing question is: **what action should this particular robot take from its current observation?** Human fingers, arms, camera motion and contact mechanics differ from a robot's gripper, control inputs and sensors.
 
-| Primary source | What it actually establishes | Implication for TeachTrace |
+| Primary source | What it actually establishes | Implication for RoboTrace |
 | --- | --- | --- |
 | [Physical Intelligence: human-to-robot transfer](https://www.pi.website/research/human_to_robot), 16 December 2025 | Their experiment co-finetunes a pretrained VLA using relevant robot data plus egocentric human data represented with tracked 3D hand positions. The transfer depends on their model/training setup and robot-data scale | Task references may complement robot experience; a plain uploaded clip is not their full pipeline |
 | [Physical Intelligence technical paper](https://www.pi.website/download/human_to_robot.pdf) | Human action representations are derived from tracked hand geometry and relative poses, roughly aligned with robot end-effector actions. Human gripper actions are not simply assumed to be visible/recoverable | Preserve coordinate frames and missing channels. Do not relabel hand motion or simulated pose differences as measured robot motor commands |
@@ -48,13 +48,13 @@ A defined robot observation-action dataset and training recipe
 Held-out policy evaluation, followed separately by real-robot validation
 ```
 
-This diagram is an architectural synthesis from the sources, not a claim that every company implements every stage or that TeachTrace already does so. Some methods use co-training rather than explicit geometric retargeting; the gap still has to be addressed by a documented method and evaluated outcome.
+This diagram is an architectural synthesis from the sources, not a claim that every company implements every stage or that RoboTrace already does so. Some methods use co-training rather than explicit geometric retargeting; the gap still has to be addressed by a documented method and evaluated outcome.
 
-## 3. Where TeachTrace can sit in the middle
+## 3. Where RoboTrace can sit in the middle
 
 The near-term wedge is **making a task demonstrably reviewable and testable**, before claiming that the underlying demonstration is training-ready.
 
-| Step | Current TeachTrace path | Boundary |
+| Step | Current RoboTrace path | Boundary |
 | --- | --- | --- |
 | Capture a reference | Select a local photo or a frame from a local video; the chosen frame is sent to the configured model only when generation is requested | One image is a reference, not a temporal human-action recording |
 | Interpret the task | Prompt plus reference can propose supported object identities and goals; deterministic text templates remain available | The proposal uses a fixed asset/slot vocabulary; it is not a measured reconstruction of the home |

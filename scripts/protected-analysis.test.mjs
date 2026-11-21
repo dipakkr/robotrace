@@ -10,6 +10,8 @@ import { runConsumer } from './consume-evidence.mjs';
 const { createMobileEvaluationCases } = await tsImport('../src/sim/mobile-evaluation-cases.ts', import.meta.url);
 const { baselineMobileCandidate, evaluateMobileCandidate } = await tsImport('../src/sim/mobile-candidates.ts', import.meta.url);
 const { buildMobileMatchedPair } = await tsImport('../src/data/mobile-matched-pair.ts', import.meta.url);
+const { createMobileKitchen, planMobileTask, startMobilePlan, advanceMobileWorld, setMobileFloorObstacle } = await tsImport('../src/sim/mobile-navigation.ts', import.meta.url);
+const { createMobileEvidence } = await tsImport('../src/data/mobile-evidence.ts', import.meta.url);
 const world = createMobileEvaluationCases().find(item => item.id === 'protected-table').world;
 const goal = { objectId: 'cup', stationId: 'sink' };
 const baseline = baselineMobileCandidate(world, goal);
@@ -19,6 +21,17 @@ const wrong = evaluateMobileCandidate({ world, goal, source: 'human', label: 'Au
   { skill: 'place', station: 'table', objectId: 'bowl' }, { skill: 'navigate', station: 'sink' }] } });
 const pair = await buildMobileMatchedPair([correct, wrong]);
 async function resign(input) { const { integrity, ...unsigned } = input; input.integrity.sha256 = await analysisSHA256(analysisCanonicalJSON(unsigned)); return input; }
+async function nativeEnvelope(payload) { return {payload, integrity:{algorithm:'SHA-256',encoding:'UTF-8 JSON.stringify(payload)',digest:await analysisSHA256(JSON.stringify(payload))}}; }
+function liveLayoutPayload() {
+  const initial=createMobileKitchen();let current=startMobilePlan(initial,planMobileTask('Take cup from counter to sink',initial),'immediate').world;
+  const trajectory=[{time:initial.simTime,world:structuredClone(initial)}];let placed=false;
+  for(let tick=0;tick<1000;tick++){
+    const next=advanceMobileWorld(current,.1);current=next.world;trajectory.push({time:current.simTime,world:structuredClone(current)});
+    if(current.robot.cargoObjectId&&!placed){const change=setMobileFloorObstacle(current,[0,-1.5]);assert.equal(change.error,undefined);current=change.world;trajectory.push({time:current.simTime,world:structuredClone(current)});placed=true;}
+    if(next.done)break;
+  }
+  assert.equal(current.mission.status,'completed');return createMobileEvidence(initial,trajectory,current,null);
+}
 
 test('independent consumer identifies actual protected excursion despite identical final record and delivered Cup in both plans', async () => {
   const report = await analyzeProtectedInput(pair);
@@ -76,4 +89,31 @@ test('CLI emits an independent report for the exact matched pair and refuses out
   assert.equal(analysis.pair.id, pair.id); assert.equal(analysis.runs[1].protectedObjectsPassed, false);
   assert.ok((await readFile(join(out, 'report.html'), 'utf8')).includes(pair.runs[1].id));
   assert.equal(await runConsumer({ args: [input, '--out', out], write: () => {} }), 1);
+});
+test('native consumer independently accepts explicit live block changes and discloses their non-matched provenance',async()=>{
+  const payload=liveLayoutPayload(),report=await analyzeProtectedInput(await nativeEnvelope(payload));
+  assert.equal(report.integrityVerified,true);assert.equal(report.runs[0].sceneConditions,'live-operator-layout-interventions');
+  assert.equal(report.runs[0].layoutInterventions.length,1);assert.equal(report.runs[0].layoutInterventions[0].action,'placed');
+  assert.equal(report.runs[0].matchedComparison,false);
+});
+test('native layout exception rejects re-sealed furniture mutation, missing events and forged frozen provenance',async()=>{
+  for(const mutate of[
+    payload=>{payload.trajectory[2].world.obstacles[0].minX-=.1;},
+    payload=>{for(const sample of payload.trajectory)sample.world.events=sample.world.events.filter(event=>!event.message.startsWith('Sandbox floor block'));payload.finalWorld=structuredClone(payload.trajectory.at(-1).world);},
+    payload=>{payload.provenance.sceneConditions='fixed-recorded-layout';},
+  ]){const payload=liveLayoutPayload();mutate(payload);await assert.rejects(analyzeProtectedInput(await nativeEnvelope(payload)),/furniture|intervention|provenance/i);}
+});
+test('live interventions cannot be relabelled as a frozen candidate comparison',async()=>{
+  const payload=liveLayoutPayload();const candidate={...structuredClone(correct),initialWorld:payload.initialWorld,finalWorld:payload.finalWorld,trajectory:payload.trajectory};
+  await assert.rejects(analyzeProtectedInput(candidate),/frozen trace changed/i);
+});
+test('independent native analysis preserves held-object goal without asserting a release or delivery',async()=>{
+ const initial=createMobileKitchen();let current=startMobilePlan(initial,planMobileTask('Pick up cup and go to sink',initial),'immediate').world;
+ const samples=[{time:initial.simTime,world:structuredClone(initial)}];
+ for(let tick=0;tick<1000;tick++){const next=advanceMobileWorld(current,.1);current=next.world;samples.push({time:current.simTime,world:structuredClone(current)});if(next.done)break;}
+ assert.equal(current.robot.cargoObjectId,'cup');assert.equal(current.mission.plan.goal.hold,true);
+ const payload=createMobileEvidence(initial,samples,current,null),report=await analyzeProtectedInput(await nativeEnvelope(payload));
+ assert.equal(report.runs[0].taskKind,'held-object-transport');assert.equal(report.runs[0].releaseRequired,false);assert.equal(report.runs[0].protectedObjectsPassed,true);assert.equal(report.taskAcceptanceRecomputed,false);
+ const corrupt=structuredClone(payload);corrupt.finalWorld.mission.plan.goal.hold=false;
+ await assert.rejects(analyzeProtectedInput(await nativeEnvelope(corrupt)),/goal|hold/i);
 });

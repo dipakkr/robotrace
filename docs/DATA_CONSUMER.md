@@ -1,6 +1,6 @@
 # Standalone native evidence consumer
 
-This is a concrete **portable state-analysis handoff**. It verifies a TeachTrace
+This is a concrete **portable state-analysis handoff**. It verifies a RoboTrace
 export and writes ordinary JSONL observations/next-observed-state targets plus a
 manifest. It runs on Node built-ins and portable analysis/policy helpers: no React, Three.js,
 controller execution, provider account, network request or training job.

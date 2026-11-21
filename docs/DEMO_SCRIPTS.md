@@ -26,7 +26,7 @@ and native consumer evidence remain separately verified. The source-derived stan
 
 ## Opening
 
-> “A robot can finish its movements and still do the wrong task. TeachTrace lets
+> “A robot can finish its movements and still do the wrong task. RoboTrace lets
 > a robotics engineer brief a task by voice, catch that difference, inspect the
 > actual exported states outside the simulator, and rerun a correction on the
 > same scene. The handoff is an unreviewed candidate pair, not a trained policy.”

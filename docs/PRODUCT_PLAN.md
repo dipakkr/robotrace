@@ -1,16 +1,16 @@
-# TeachTrace product and delivery plan
+# RoboTrace product and delivery plan
 
 Prepared 21 November 2026. This plan distinguishes the current software prototype from the complete hackathon deliverable and later robotics research. Feature descriptions below are a specification; the application and its verification results determine which features are complete.
 
 ## 1. Product decision
 
-**TeachTrace is a conversational robot scenario-authoring and testing workbench.** A robotics employee describes a supported workcell and task, reviews the generated scenario, runs a controller, examines the result, and saves the episode. Voice and text share the same validated scenario/action interface.
+**RoboTrace is a conversational robot scenario-authoring and testing workbench.** A robotics employee describes a supported workcell and task, reviews the generated scenario, runs a controller, examines the result, and saves the episode. Voice and text share the same validated scenario/action interface.
 
 The initial task family is tabletop sorting and placement involving rigid objects and destination trays. The workcell is the test environment; the employee's complete workflow is **author -> review -> execute -> evaluate -> record/curate**. Demonstration collection is one use of the resulting record, alongside debugging and repeatable controller testing.
 
 ### Problem statement
 
-> Robotics teams must turn task descriptions into repeatable scenarios, run robot controllers against them, identify failures, and preserve usable evidence. TeachTrace lets an engineer or collector author a bounded scenario conversationally, review it before execution, and turn the run into an inspectable episode.
+> Robotics teams must turn task descriptions into repeatable scenarios, run robot controllers against them, identify failures, and preserve usable evidence. RoboTrace lets an engineer or collector author a bounded scenario conversationally, review it before execution, and turn the run into an inspectable episode.
 
 The hypothesis is that a shared conversational authoring, execution, and review surface can reduce scene-setup and failure-triage effort. Measure time to first valid scenario, repeatability of reruns, failure identification, and accepted episodes per session. No productivity or model-training improvement has been established by the prototype.
 
@@ -58,7 +58,7 @@ These are a point-in-time integration report, not permanent production guarantee
 
 The user-provided selected track asks for an employee-facing natural voice assistant with enterprise context, tool/API actions, confirmation, and follow-up. Its technician example is illustrative. The event's public [common technology requirements](https://www.commudle.com/communities/knotic/hackathons/build-with-agora-blr) require Agora Conversational AI, Murf Falcon TTS, action-oriented tools/APIs, and an end-to-end demonstration. Physical robot hardware is not specified as mandatory.
 
-| Requirement | TeachTrace implementation | Evidence required before claiming complete |
+| Requirement | RoboTrace implementation | Evidence required before claiming complete |
 | --- | --- | --- |
 | Initiate | Employee requests a test scenario or collection assignment through Agora voice. | Actual Agora session joins and exchanges audio. |
 | Understand | Assistant retrieves the task brief, supported scene vocabulary, collection/test rules, and success criteria. | Retrieved context is visible and the scenario/plan reflects it. |
@@ -350,7 +350,7 @@ Use action IDs and request IDs to prevent duplicate writes when a network reques
 
 ## 8. Recording and export contract
 
-The first export is a **TeachTrace simulation episode**, with an explicitly versioned schema. It is not automatically a LeRobot or RLDS dataset.
+The first export is a **RoboTrace simulation episode**, with an explicitly versioned schema. It is not automatically a LeRobot or RLDS dataset.
 
 Recommended fields:
 

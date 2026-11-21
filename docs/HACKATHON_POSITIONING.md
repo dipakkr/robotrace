@@ -4,7 +4,7 @@ Checked **21 November 2026** against primary event, organizer and project source
 
 ## Lead with the operator’s job
 
-> TeachTrace helps a robotics QA operator test a spoken task, expose an AI plan that fails, and save the exact attempt as reviewed, replayable evidence.
+> RoboTrace helps a robotics QA operator test a spoken task, expose an AI plan that fails, and save the exact attempt as reviewed, replayable evidence.
 
 Use **voice-assisted predeployment task QA** as the core. Explain “predeployment” as a software test before a later engineering/hardware gate. Do not imply this prototype approves physical deployment. The visible robot gives decisions inspectable consequences; the deliverable is the task, attempt, failed predicate and persistent report.
 
@@ -24,7 +24,7 @@ The **AI Mobile Coders organizer recap** names Pillion as winner, Sahara as firs
 
 Agora’s recipe archive labels the Pillion award as author-reported; the organizer recap supplies separate award confirmation. [Agora archive](https://recipes.agora.io/topics/voice-ai-hackathon-2026)
 
-| Verified placed project | What its primary project materials describe | Transferable lesson for TeachTrace — our inference |
+| Verified placed project | What its primary project materials describe | Transferable lesson for RoboTrace — our inference |
 | --- | --- | --- |
 | **Pillion — winner** | A rider-specific Android voice copilot using Agora, tools that reach phone capabilities, confirmation before messaging/calling, and a human/family handoff. Its recipe explains execution acknowledgements and demo steps. [Author’s repository recipe](https://github.com/jatinvats123/pillion/blob/main/docs/ai/RECIPE.md), [submitted project](https://www.commudle.com/builds/pillion) | Start with one employee and a hands-busy situation. Show an action reaching the real execution surface and a returned outcome; make confirmation and exceptions visible. |
 | **Sahara — first runner-up** | A multilingual patient-support prototype with voice tools, record/logging workflows and caregiver handoff. Its README explicitly distinguishes simulated emergency dispatch from actual caregiver alerts. These are creator descriptions, not a clinical validation we performed. [Submitted project](https://www.commudle.com/builds/sahara-the-voice-for-complete-indic-patient-care), [source README](https://github.com/ace-ify/sahara-app) | An end-to-end story and explicit prototype boundaries are compatible. Demonstrate our actual record/report follow-up instead of promising unavailable robotics training. |
@@ -34,7 +34,7 @@ The evidence supports the awards and these published designs. It does **not** es
 
 Do not clone every integration. Borrow the useful structure: a specific user, natural voice as a working interface, meaningful actions, grounded outcomes, critical confirmation, recovery, and a visible result the next person can inspect.
 
-## The strongest demonstrated TeachTrace sequence
+## The strongest demonstrated RoboTrace sequence
 
 1. **Employee starts a task by voice.** The assistant retrieves the actual mobile scene and locally authored SOP, rather than claiming a connection to an external enterprise knowledge system.
 2. **Action is visible and bounded.** The base navigates before a reach check, pickup and delivery. The main task is a deterministic known-map/idealized-handoff workflow.

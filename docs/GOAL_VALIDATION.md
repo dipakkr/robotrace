@@ -1,4 +1,4 @@
-# Does TeachTrace address a useful physical-AI problem?
+# Does RoboTrace address a useful physical-AI problem?
 
 Audit date: **21 November 2026**. This assessment combines inspection of the current source with primary-source research. Product demand, savings and downstream learning benefit remain hypotheses. It does not claim a frontier-lab partnership, a training improvement or physical transfer.
 
@@ -14,7 +14,7 @@ That still leaves a substantial gap between useful simulation evidence and data 
 
 The best near-term pitch is:
 
-> Robotics QA operators need to reproduce what a task meant, why a plan failed, and whether a claimed delivery actually happened. TeachTrace turns a spoken task into a bounded, inspectable simulation attempt, checks the outcome, and hands another engineer the exact scene, plan, trace and failure evidence.
+> Robotics QA operators need to reproduce what a task meant, why a plan failed, and whether a claimed delivery actually happened. RoboTrace turns a spoken task into a bounded, inspectable simulation attempt, checks the outcome, and hands another engineer the exact scene, plan, trace and failure evidence.
 
 The initial customer hypothesis is a **small robotics application or demonstration-operations team testing task-level decisions for mobile counter-to-station delivery**. The user is its collector, integration engineer or QA technician. A frontier lab is a possible later recipient; it is too broad to be the assumed first paying customer.
 
@@ -54,7 +54,7 @@ The mobile evidence schema already labels its source as a simulated controller a
 
 LeRobot documents episode-aware feature records and writer/reader operations. That makes it a concrete consumer candidate, rather than evidence that our current files are already compatible. [LeRobot dataset API](https://huggingface.co/docs/lerobot/en/api/datasets)
 
-MimicGen's relevance is the complete chain: seed demonstrations, generated variations, executed trajectories and policies evaluated from generated data. TeachTrace has not reproduced that learning experiment. [MimicGen project](https://mimicgen.github.io/)
+MimicGen's relevance is the complete chain: seed demonstrations, generated variations, executed trajectories and policies evaluated from generated data. RoboTrace has not reproduced that learning experiment. [MimicGen project](https://mimicgen.github.io/)
 
 Physical Intelligence's human-to-robot work uses a pretrained VLA, relevant robot data and human demonstrations represented with tracked 3D hand positions. It does not establish that an arbitrary phone frame plus a synthetic arm trace supplies the same supervision. [PI human-to-robot research](https://www.pi.website/research/human_to_robot)
 
@@ -102,7 +102,7 @@ micro1's flow already describes expert task definition, model-assisted generatio
 
 The narrower differentiation to test is **a laptop-first, voice-assisted executable task case that keeps the requested goal, actual movement, reference preservation, interruption and evidence receipt aligned**. Its value could be faster reproduction and review of task-level failures. This is a product hypothesis, not a verified competitive moat.
 
-Pronto-style household capture may supply an interesting future reference source, but TeachTrace has no established access, buyer relationship or measured training result from it. The current customer experiment should use owner-controlled examples and a willing robotics reviewer. The fuller source and licensing assessment is in [the data strategy](DATA_FLYWHEEL_STRATEGY.md) and [human-demonstration bridge](HUMAN_DEMONSTRATION_BRIDGE.md).
+Pronto-style household capture may supply an interesting future reference source, but RoboTrace has no established access, buyer relationship or measured training result from it. The current customer experiment should use owner-controlled examples and a willing robotics reviewer. The fuller source and licensing assessment is in [the data strategy](DATA_FLYWHEEL_STRATEGY.md) and [human-demonstration bridge](HUMAN_DEMONSTRATION_BRIDGE.md).
 
 ## What to measure using the same baselines
 

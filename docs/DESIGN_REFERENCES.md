@@ -1,6 +1,6 @@
-# TeachTrace design references and evidence
+# RoboTrace design references and evidence
 
-Researched 21 November 2026. Use these products as references for robotics workbench structure and interaction. TeachTrace should use its own name, assets, styling, and narrowly scoped workflow.
+Researched 21 November 2026. Use these products as references for robotics workbench structure and interaction. RoboTrace should use its own name, assets, styling, and narrowly scoped workflow.
 
 ## Evidence method and limitations
 
@@ -52,7 +52,7 @@ Published chapter guide:
 
 **Evidence status:** official documentation, video description, and public embedded-demo frames inspected; no signed-in trial or complete video viewing.
 
-**Product positioning note:** Foxglove already describes agents and a robot-data workflow on its public site. TeachTrace should not claim that combining robotics data and an assistant is an untouched market.
+**Product positioning note:** Foxglove already describes agents and a robot-data workflow on its public site. RoboTrace should not claim that combining robotics data and an assistant is an untouched market.
 
 ## 3. Formant — operator authority and feedback
 
@@ -92,7 +92,7 @@ LeRobot provides episode-based collection and visualization of camera observatio
 
 **Evidence status:** public tools and data model documented. No dataset was downloaded or model trained as part of this reference research.
 
-## 6. Proposed TeachTrace visual direction
+## 6. Proposed RoboTrace visual direction
 
 The following are original design recommendations inferred from the workflow, not observations of an individual product's exact styling.
 
@@ -129,7 +129,7 @@ The actual implementation may collapse regions on smaller screens. Prioritize ob
 
 ## 8. Interaction reference map
 
-| TeachTrace interaction | Reference influence | TeachTrace requirement |
+| RoboTrace interaction | Reference influence | RoboTrace requirement |
 | --- | --- | --- |
 | Object selection and properties | Isaac Sim, Foxglove | Selection is consistent across tree and scene. |
 | Readable action queue | Flowstate | Every row corresponds to a supported executable action. |

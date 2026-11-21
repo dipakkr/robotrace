@@ -1,8 +1,8 @@
-# Physical-AI evaluation: what TeachTrace measures
+# Physical-AI evaluation: what RoboTrace measures
 
 Updated **21 November 2026**. This document describes the implemented evaluation contracts, the evidence collected so far, and the gates required for stronger claims. Research references and downstream data-format background are in [PHYSICAL_AI_RESEARCH.md](PHYSICAL_AI_RESEARCH.md).
 
-TeachTrace helps a robotics operator turn a work instruction into a reproducible simulated attempt, inspect a decision that failed, and hand a reviewed record to another engineer. Its current physical-AI contribution is **task specification, decision evaluation, interruption testing, and reviewable evidence**. A visible arm makes the consequences inspectable. Motion on screen alone does not establish useful robot-training data.
+RoboTrace helps a robotics operator turn a work instruction into a reproducible simulated attempt, inspect a decision that failed, and hand a reviewed record to another engineer. Its current physical-AI contribution is **task specification, decision evaluation, interruption testing, and reviewable evidence**. A visible arm makes the consequences inspectable. Motion on screen alone does not establish useful robot-training data.
 
 The primary demo is now a complete **mobile-kitchen workflow**: voice request, retrieved local SOP, actual simulated navigation/handling, truthful outcome, explicit recorded-evidence review, durable local service report, and saved replay. The separate tabletop environments remain supported; their assignment/action schema differs from the mobile schema described next.
 

@@ -128,7 +128,7 @@ async function health(url, type, deadline) {
     });
     if (type === 'callback') return response.status === 401;
     if (!response.ok) return false;
-    if (type === 'preview') return (await response.text()).includes('TeachTrace');
+    if (type === 'preview') return (await response.text()).includes('RoboTrace');
     const value = await response.json();
     return value?.available === true && typeof value.configured === 'boolean';
   } catch { return false; }

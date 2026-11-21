@@ -1,5 +1,5 @@
 /** Locally authored sample collection procedures, not customer or external enterprise records. */
-const source = 'TeachTrace demo collection SOP';
+const source = 'RoboTrace demo collection SOP';
 const revision = '1.0';
 const boundaries = 'This is an idealized kinematic simulator with idealized attachment grasps. It records simulated motion, not measured contact forces, a trained robot policy, or real-world deployment evidence. Never claim physical robustness, physical safety certification, or policy learning.';
 const commonAcceptance = [
@@ -132,6 +132,15 @@ function mobileTaskGuide(world) {
       return object.station !== 'robot' || ['carried', 'unloading'].includes(object.status);
     }) || world.objects.filter(object => ['loading', 'carried', 'unloading'].includes(object.status)).length > 1
     || (robot.cargoObjectId !== null && !world.objects.some(object => object.id === robot.cargoObjectId && object.station === 'robot'))) return reject();
+  if (world.sandboxMode === 'persistent') return {
+    id: 'TT-MOBILE-KITCHEN-001', environmentId: 'mobile-kitchen', title: 'Persistent kitchen sandbox', command: null, assignments: [],
+    instructions: 'There is no default collection assignment. Follow only the latest explicit user instruction using current object locations. Go to Sink/Table/Counter/Home is navigation only and never implies pickup or release. Pick up Cup holds it; Carry Cup to Sink keeps it held; Put Cup in Sink releases it. Do not replace navigation with a sample cup delivery. Stop immediately cancels motion and queued tasks while preserving cargo. Ask one clarification for ambiguous or unsupported actions; do not invent washing, cooking or opening cabinets. Report only fresh executionReceipt checks. A running task is not a completed delivery. Save/export remain unreviewed operator actions.',
+    acceptance: ['The user-requested action alone determines the goal', 'Navigation does not collect or release objects', 'Pickup/carry preserves custody until an explicit placement', 'Unrequested objects remain unchanged', 'Stop halts current motion and clears queued work'],
+    rationale: world.objects.map(object => `${object.label} is currently at ${stationLabels[object.station] ?? 'Robot carrier'}; ${Math.hypot(object.position[0] - robot.position[0], object.position[1] - robot.position[1], 1 - object.height).toFixed(2)} m from the arm origin with ${robot.armReach.toFixed(2)} m reach.`),
+    reachContext: null,
+    supportedCommands: ['Go to Sink', 'Go to Counter', 'Go to Table', 'Go Home', 'Pick up cup', 'Carry cup to sink', 'Put cup in sink', 'Take cup from counter to sink', 'Bring bowl to table', 'pause', 'resume', 'stop', 'human enter', 'human clear'],
+    source: 'RoboTrace explicit-action sandbox procedure', sourceKind: 'locally-authored-sample', revision, boundaries: mobileBoundaries,
+  };
   const cup = world.objects.find(object => object.id === 'cup'), bowl = world.objects.find(object => object.id === 'bowl');
   const cupDone = cup.station === 'sink' && cup.status === 'delivered';
   const bowlDone = bowl.station === 'table' && bowl.status === 'delivered';
@@ -162,7 +171,7 @@ function mobileTaskGuide(world) {
     ],
     rationale, reachContext: selected ? { objectId: selected.id, distance: measured, armReach: robot.armReach, reachable: measured <= robot.armReach, units: 'simulated meters' } : null,
     supportedCommands: ['Take cup from counter to sink', 'Bring bowl to table', 'Go to Counter', 'Go to Table', 'Go to Sink', 'Go Home', 'pause', 'resume', 'stop', 'reset', 'human enter', 'human clear'],
-    source: 'TeachTrace demo mobile-kitchen SOP', sourceKind: 'locally-authored-sample', revision, boundaries: mobileBoundaries,
+    source: 'RoboTrace demo mobile-kitchen SOP', sourceKind: 'locally-authored-sample', revision, boundaries: mobileBoundaries,
   };
 }
 
@@ -203,7 +212,7 @@ export function taskGuideForWorld(world) {
   return {
     id: task.id, environmentId: 'custom', title: task.title, command: task.instruction,
     instructions: `Use the exact reviewed scene task “${task.instruction}”. ${assignments.map(target => target.unchanged ? `Leave ${target.objectLabel} untouched on ${target.destinationLabel}.` : `Place ${target.objectLabel} in ${target.destinationLabel}.`).join(' ')} ${reviewInstructions}`,
-    assignments, acceptance: [...acceptance, ...commonAcceptance], source: 'TeachTrace operator-reviewed scene SOP',
+    assignments, acceptance: [...acceptance, ...commonAcceptance], source: 'RoboTrace operator-reviewed scene SOP',
     sourceKind: aiAssisted ? 'operator-reviewed-ai-assisted-scene' : 'operator-reviewed-authored-scene', revision, boundaries, provenance,
   };
 }

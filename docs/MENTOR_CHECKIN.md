@@ -24,7 +24,7 @@ provider/save/replay evidence remains verified and separate.
 
 ## The 30-second explanation
 
-> “An AI plan can complete its motions and still fail the task. TeachTrace lets
+> “An AI plan can complete its motions and still fail the task. RoboTrace lets
 > a robotics engineer brief a task by voice, evaluate exact actions on a frozen
 > scene, export the result for independent inspection, and rerun a correction.
 > The proposed handoff retains both candidate plans, their actual failures and

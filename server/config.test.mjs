@@ -47,9 +47,13 @@ test('agent configuration uses Murf Falcon and synchronous authenticated tools',
   assert.equal(config.properties.asr.credential_mode, 'managed');
   assert.equal(config.properties.asr.vendor, 'deepgram');
   assert.equal(config.properties.asr.params.url, 'wss://api.deepgram.com/v1/listen');
+  assert.equal(config.properties.asr.params.model, 'nova-3');
+  assert.equal(config.properties.asr.params.language, 'multi');
   assert.equal(config.properties.llm.credential_mode, 'byok');
   assert.equal(config.properties.llm.api_key, fakeEnv.LLM_API_KEY);
   assert.equal(config.properties.advanced_features.enable_tools, true);
+  assert.deepEqual(config.properties.parameters.transcript, { enable: true, protocol_version: 'v2', enable_words: false });
+  assert.equal(config.properties.parameters.data_channel, 'datastream');
   assert.equal(config.properties.llm.tools.length, 2);
   assert.equal(config.properties.llm.tools[1].server.url, 'https://example.test/api/voice/tools/session/command');
   assert.equal(config.properties.llm.tools[1].server.headers.Authorization, 'Bearer tool-secret');
@@ -100,3 +104,28 @@ test('voice policy follows immediate simulation execution and separates saving f
 });
 
 export { fakeEnv };
+
+test('persistent mobile voice separates navigation, custody and release without a default task', () => {
+  const { properties: { llm } } = buildAgentConfig({ env: fakeEnv, id: 'session', channel: 'room', agentToken: 'rtc', toolSecret: 'tool-secret' });
+  const prompt = llm.system_messages.map(message => message.content).join(' ');
+  assert.match(prompt, /NO default assignment/);
+  assert.match(prompt, /base navigation ONLY: never add a pickup/);
+  assert.match(prompt, /arrive while still holding Cup, without release/);
+  assert.match(prompt, /Execute explicit stop immediately/);
+  assert.match(prompt, /Be quiet after acknowledging an outcome/);
+});
+test('multilingual input preserves the verified English TTS voice and canonical action boundaries',()=>{
+ const config=buildAgentConfig({env:fakeEnv,id:'session',channel:'room',agentToken:'rtc',toolSecret:'tool-secret'});
+ assert.equal(config.properties.asr.params.language,'multi');
+ assert.equal(config.properties.tts.params.voiceId,'Matthew');assert.equal(config.properties.tts.params.locale,'en-US');assert.equal(config.properties.tts.params.model,'FALCON');
+ const prompt=config.properties.llm.system_messages.map(message=>message.content).join(' ');
+ for(const concept of ['Hindi in Devanagari','Hinglish','canonical English command','negation','Carry cup to Sink without release','mat ruko','speak concise English replies'])assert.ok(prompt.includes(concept),concept);
+ const configured=buildAgentConfig({env:{...fakeEnv,MURF_VOICE_ID:'ExistingConfiguredVoice'},id:'session',channel:'room',agentToken:'rtc',toolSecret:'tool-secret'});assert.equal(configured.properties.tts.params.voiceId,'ExistingConfiguredVoice');
+});
+test('Hindi ASR uses one documented literal keyterm and limits homophone recovery to grounded action context',()=>{
+ const {properties}=buildAgentConfig({env:fakeEnv,id:'session',channel:'room',agentToken:'rtc',toolSecret:'tool-secret'});
+ assert.equal(properties.asr.params.language,'multi');assert.equal(typeof properties.asr.params.keyterm,'string');
+ assert.equal(decodeURIComponent(properties.asr.params.keyterm),'कप');assert.equal(/[;,\n]/.test(properties.asr.params.keyterm),false);assert.equal('keywords' in properties.asr.params,false);
+ const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');
+ assert.ok(prompt.includes('freshly retrieved unique visible labels'));assert.ok(prompt.includes('Never replace unrelated words globally'));assert.ok(prompt.includes('map लोगों to Stop'));assert.ok(prompt.includes('मत रुको remains a negation'));
+});

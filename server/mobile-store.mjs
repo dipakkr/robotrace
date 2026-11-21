@@ -5,7 +5,7 @@ import { tsImport } from 'tsx/esm/api';
 import { taskGuideForWorld } from './task-guides.mjs';
 
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
-const MAX_BYTES = 1024 * 1024;
+const MAX_BYTES = 8 * 1024 * 1024;
 const fileSystem = { mkdir, readFile, writeFile, link, rm, readdir, stat };
 const queues = new Map();
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -35,7 +35,7 @@ function finiteJSON(value, depth = 0) {
 }
 
 function validGoal(goal) {
-  return record(goal) && (exact(goal, ['stationId']) || exact(goal, ['objectId', 'stationId']))
+  return record(goal) && (exact(goal, ['stationId']) || exact(goal, ['objectId', 'stationId']) || (exact(goal, ['objectId', 'stationId', 'hold']) && goal.hold === true))
     && ['counter', 'table', 'sink', 'home'].includes(goal.stationId)
     && (goal.objectId === undefined || ['cup', 'bowl'].includes(goal.objectId));
 }
@@ -91,7 +91,7 @@ async function verifyAndReport(envelope, review, id, savedAt) {
   const savedReview = reviewed ? { approved: true, identityVerified: false } : { approved: false, identityVerified: false, source: 'operator-save' };
   let raw;
   try { raw = JSON.stringify(envelope); } catch { throw fail('Provide a bounded JSON mobile evidence envelope.'); }
-  if (typeof raw !== 'string' || Buffer.byteLength(raw) > MAX_BYTES || !finiteJSON(envelope)) throw fail('Mobile evidence must contain finite JSON of at most 1 MiB.');
+  if (typeof raw !== 'string' || Buffer.byteLength(raw) > MAX_BYTES || !finiteJSON(envelope)) throw fail('Mobile evidence must contain finite JSON of at most 8 MiB.');
   if (!exact(envelope, ['payload', 'integrity']) || !exact(envelope.integrity, ['algorithm', 'encoding', 'digest'])
     || envelope.integrity.algorithm !== 'SHA-256' || envelope.integrity.encoding !== 'UTF-8 JSON.stringify(payload)'
     || !/^[a-f\d]{64}$/.test(envelope.integrity.digest ?? '') || hash(JSON.stringify(envelope.payload)) !== envelope.integrity.digest) {
@@ -146,6 +146,12 @@ async function verifyAndReport(envelope, review, id, savedAt) {
   let reconstructed;
   try { reconstructed = shared.createMobileEvidence(payload.initialWorld, samples, payload.finalWorld, null); }
   catch { throw fail('The native mobile recording failed independent chronology, scene, cargo or endpoint validation.'); }
+  const layoutKeys = ['sceneConditions', 'layoutInterventions', 'matchedComparison'];
+  const liveLayout = reconstructed.provenance.layoutInterventions.length > 0;
+  if (layoutKeys.some(key => (liveLayout || payload.provenance?.[key] !== undefined)
+    && !same(payload.provenance?.[key], reconstructed.provenance[key]))) {
+    throw fail('Recorded live layout interventions must retain their explicit unpaired operator provenance.');
+  }
   const checks = reconstructed.checks.map(check => ({ ...check }));
   for (const objectId of protectedIds) {
     const object = payload.initialWorld.objects.find(item => item.id === objectId);
@@ -165,7 +171,7 @@ async function verifyAndReport(envelope, review, id, savedAt) {
     schema: 'teachtrace.mobile-service-report.v1', id, episodeId: id, savedAt, createdAt: savedAt,
     assignmentId: 'TT-MOBILE-KITCHEN-001', title: `Mobile kitchen: ${mission.plan.command}`, command: mission.plan.command, goal: { ...declared.goal },
     accepted, taskAccepted: accepted, outcome, checks,
-    summary: `${reviewed ? 'Reviewed' : 'Unreviewed'} mobile attempt saved. Recorded outcome: ${outcome}. Task acceptance: ${accepted ? 'passed' : 'not accepted'}. ${accepted ? declared.goal.objectId ? 'The recorded final station, delivery and protected-object checks passed.' : `The recorded navigation destination${navigationCargoId ? ', preserved cargo custody' : ''} and protected-object checks passed. No object delivery is asserted.` : 'Inspect the recorded attempt and failed checks before preparing a corrected task.'}`,
+    summary: `${reviewed ? 'Reviewed' : 'Unreviewed'} mobile attempt saved. Recorded outcome: ${outcome}. Task acceptance: ${accepted ? 'passed' : 'not accepted'}. ${accepted ? declared.goal.hold ? 'The recorded destination, held-object custody and protected-object checks passed. The object remains carried; no release or delivery is asserted.' : declared.goal.objectId ? 'The recorded final station, delivery and protected-object checks passed.' : `The recorded navigation destination${navigationCargoId ? ', preserved cargo custody' : ''} and protected-object checks passed. No object delivery is asserted.` : 'Inspect the recorded attempt and failed checks before preparing a corrected task.'}`,
     metrics: { sampleCount: samples.length, distanceTravelled, durationSeconds, completedPickups: observedPickups, completedPlacements: observedPlacements, recordedCompletedSteps: mission.completedSteps },
     basis: 'independentlyrecomputed-recorded-simulator-state', independentlyRecomputed: true, motionReplayed: false,
     sourceHash: evidence.integrity.digest, sourceKind: 'locally-authored-mobile-simulation', review: savedReview,

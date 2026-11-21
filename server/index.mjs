@@ -11,6 +11,7 @@ import { createMobileQaStore, validateMobileQaMetadata, mobileQaSummary } from '
 import { createWorkflowStore } from './workflows.mjs';
 import { createPlannerService } from './planner-models.mjs';
 import { generateMobileCandidate } from './mobile-planner.mjs';
+import { interpretMobileCommand } from './mobile-intent.mjs';
 import { evaluateMobilePlanOnServer, evaluatePlanOnServer } from './simulation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -21,11 +22,11 @@ function respond(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-async function body(req) {
+async function body(req, limit = BODY_LIMIT) {
   let raw = '';
   for await (const chunk of req) {
     raw += chunk;
-    if (Buffer.byteLength(raw) > BODY_LIMIT) throw Object.assign(new Error('Request exceeds 1 MiB.'), { status: 413 });
+    if (Buffer.byteLength(raw) > limit) throw Object.assign(new Error(`Request exceeds ${limit / (1024 * 1024)} MiB.`), { status: 413 });
   }
   if (!raw) return {};
   try { return JSON.parse(raw); } catch { throw Object.assign(new Error('Invalid JSON.'), { status: 400 }); }
@@ -152,6 +153,9 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const input = await body(req);
         respond(res, 200, await generateMobileCandidate({ env, fetchImpl, model: input.model, world: input.world, command: input.command, goal: input.goal })); return;
       }
+      if (req.method === 'POST' && url.pathname === '/api/mobile/interpret') {
+        respond(res, 200, await interpretMobileCommand({ env, fetchImpl, input: await body(req) })); return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/evaluations/mobile/history') {
         respond(res, 200, await mobileQa.list()); return;
       }
@@ -178,7 +182,7 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         respond(res, 200, { episodes: await mobileEvidence.list() }); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/mobile/episodes') {
-        respond(res, 201, await mobileEvidence.submit(await body(req))); return;
+        respond(res, 201, await mobileEvidence.submit(await body(req, 8 * 1024 * 1024))); return;
       }
       const mobileRecordRoute = url.pathname.match(/^\/api\/mobile\/episodes\/([^/]+)$/);
       if (req.method === 'GET' && mobileRecordRoute) {
@@ -420,8 +424,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     }
     server.emit('request', req, res);
   });
-  server.listen(port, '127.0.0.1', () => console.log(`TeachTrace local API: http://127.0.0.1:${port} (voice ${configuration().configured ? 'configured; not live-verified' : 'not configured'})`));
-  toolsServer.listen(toolsPort, '127.0.0.1', () => console.log(`TeachTrace tool-only listener: http://127.0.0.1:${toolsPort}`));
+  server.listen(port, '127.0.0.1', () => console.log(`RoboTrace local API: http://127.0.0.1:${port} (voice ${configuration().configured ? 'configured; not live-verified' : 'not configured'})`));
+  toolsServer.listen(toolsPort, '127.0.0.1', () => console.log(`RoboTrace tool-only listener: http://127.0.0.1:${toolsPort}`));
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {
     await server.closeVoiceSessions();
     toolsServer.close();

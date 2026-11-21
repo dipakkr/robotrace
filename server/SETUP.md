@@ -34,7 +34,7 @@ agora project doctor --feature convoai
 Choose the intended existing project. If you need a new standalone reference,
 `agora init my-voice-reference --template nextjs` is the official onboarding flow;
 it can reuse a project or guide project creation. Keep that app separate from
-TeachTrace. For a reference app explicitly bound to your existing project:
+RoboTrace. For a reference app explicitly bound to your existing project:
 
 ```sh
 agora quickstart create agora-reference --template nextjs --dir .local/agora-reference --project "YOUR_PROJECT_NAME"
@@ -42,7 +42,7 @@ agora quickstart env write .local/agora-reference --project "YOUR_PROJECT_NAME"
 ```
 
 `quickstart env write` selects the reference template's expected environment file.
-It does not configure TeachTrace's Murf or LLM provider keys. For this custom
+It does not configure RoboTrace's Murf or LLM provider keys. For this custom
 React/Node app, write the project credentials using the standard server-only names:
 
 ```sh
@@ -53,7 +53,7 @@ Read the CLI prompt before changing an existing file; do not use `--overwrite`,
 which replaces the file with only the two Agora values. Add the remaining fields
 from `.env.example` in your editor if needed. Do not run env-print commands,
 `cat .env.local`, or include credential values in terminal arguments or screenshots.
-The reference app's `NEXT_PUBLIC_*` naming is specific to its template; TeachTrace's
+The reference app's `NEXT_PUBLIC_*` naming is specific to its template; RoboTrace's
 provider settings stay server-only.
 
 ### Console alternative: App ID and App Certificate
@@ -174,7 +174,7 @@ action are the actual end-to-end verification.
 ## Verification status
 
 On the development checkout, official CLI installation and OAuth login completed,
-Agora project doctor passed, and the real TeachTrace API agent start returned
+Agora project doctor passed, and the real RoboTrace API agent start returned
 HTTP 201 followed by HTTP 200 on stop. The latest reported automated run passed
 65 tests. These are point-in-time results, not guarantees for a fresh account.
 

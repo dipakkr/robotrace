@@ -72,7 +72,7 @@ test('unknown and custom scenes use generic explicit-destination rules without i
 test('all guides identify local sample provenance, immediate commands, and simulation limits', () => {
   for (const id of ['workbench', 'kitchen', 'lab', 'custom']) {
     const guide = taskGuideForEnvironment(id);
-    assert.equal(guide.source, 'TeachTrace demo collection SOP');
+    assert.equal(guide.source, 'RoboTrace demo collection SOP');
     assert.equal(guide.sourceKind, 'locally-authored-sample');
     assert.equal(guide.revision, '1.0');
     assert.match(guide.instructions, /starts without approval or a countdown/);
@@ -251,4 +251,15 @@ test('all executable SOPs describe immediate local execution and truthful unrevi
     assert.match(guide.instructions, /saved evidence remains unreviewed/);
     assert.match(guide.instructions, /running receipt is not completion/);
   }
+});
+
+test('persistent kitchen context supplies capabilities without assigning Cup delivery to navigation requests', () => {
+  const world = { ...voiceWorld(mobile.createMobileKitchen()), sandboxMode: 'persistent' };
+  const guide = taskGuideForWorld(world);
+  assert.equal(guide.id, 'TT-MOBILE-KITCHEN-001');
+  assert.equal(guide.command, null); assert.deepEqual(guide.assignments, []);
+  assert.match(guide.instructions, /There is no default collection assignment/);
+  assert.match(guide.instructions, /navigation only and never implies pickup or release/);
+  assert.match(guide.instructions, /Stop immediately/);
+  assert.equal(world.objects[0].station, 'counter');
 });

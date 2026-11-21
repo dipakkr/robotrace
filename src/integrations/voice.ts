@@ -1,3 +1,7 @@
+import { AgoraCaptionDecoder, captionPacketBytes } from './voice-captions';
+import type { VoiceTranscript } from './voice-captions';
+import { VoiceSpeechControlGate } from './voice-command-parser';
+import type { SpeechControlObservation } from './voice-command-parser';
 /** Optional real Agora RTC + Conversational AI + Murf Falcon adapter.
  * No browser speech-recognition or speech-synthesis fallback is used here.
  */
@@ -22,6 +26,8 @@ export interface VoiceCommandResult {
 export interface VoiceOptions {
   getWorld?: () => unknown;
   onStatus?: (status: VoiceStatus, message?: string) => void;
+  onTranscript?: (transcript: VoiceTranscript) => void;
+  onSpeechControl?: (event: SpeechControlObservation) => void;
 }
 export interface VoiceConnection {
   sessionId: string;
@@ -54,6 +60,13 @@ let activeConnection: VoiceConnection | null = null;
 let connectionStarting = false;
 let voiceGeneration = 0;
 let pendingStop: (() => Promise<void>) | null = null;
+let captureCaptionPackets = false;
+let captionDiagnostics = { frames: 0, decoded: 0, sizes: [] as number[], types: [] as string[], samples: [] as { bytes: number; base64: string }[] };
+let speechControlDiagnostics: SpeechControlObservation[] = [];
+/** Explicit local test instrumentation; no tokens, client objects or REST payloads. */
+export function enableVoiceCaptionDiagnostics(enabled: boolean) { captureCaptionPackets = enabled; }
+export function getVoiceCaptionDiagnostics() { return structuredClone(captionDiagnostics); }
+export function getVoiceSpeechControlDiagnostics() { return structuredClone(speechControlDiagnostics); }
 
 export async function startVoiceSession(
   onCommand: (command: string) => Promise<VoiceCommandResult> | VoiceCommandResult,
@@ -61,6 +74,8 @@ export async function startVoiceSession(
 ): Promise<VoiceConnection> {
   if (activeConnection || connectionStarting) throw new Error('A voice session is already connected or starting.');
   connectionStarting = true;
+  captionDiagnostics = { frames: 0, decoded: 0, sizes: [], types: [], samples: [] };
+  speechControlDiagnostics = [];
   const generation = voiceGeneration;
   let client: import('agora-rtc-sdk-ng').IAgoraRTCClient;
   try {
@@ -81,6 +96,8 @@ export async function startVoiceSession(
   let snapshotTimer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
   let agentAudioConnected = false;
+  const captions = new AgoraCaptionDecoder();
+  const speechControls = new VoiceSpeechControlGate(onCommand, event => { speechControlDiagnostics.push(event); speechControlDiagnostics = speechControlDiagnostics.slice(-100); options.onSpeechControl?.(event); });
 
   const onPageHide = () => {
     if (sessionId && !stopped) navigator.sendBeacon('/api/voice/stop', new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }));
@@ -90,6 +107,8 @@ export async function startVoiceSession(
     stopped = true;
     window.removeEventListener('pagehide', onPageHide);
     events?.close();
+    captions.clear();
+    speechControls.clear();
     clearInterval(snapshotTimer);
     microphone?.stop(); microphone?.close();
     await client.leave().catch(() => {});
@@ -104,6 +123,25 @@ export async function startVoiceSession(
   };
 
   pendingStop = stop;
+  // Install before join: greetings and both speakers arrive on this RTC stream.
+  client.on('stream-message', (_uid, payload) => {
+    if (stopped || generation !== voiceGeneration) return;
+    captionDiagnostics.frames++;
+    const packet = captionPacketBytes(payload);
+    if (captionDiagnostics.sizes.length < 64) captionDiagnostics.sizes.push(packet?.byteLength ?? -1);
+    if (captionDiagnostics.types.length < 64) captionDiagnostics.types.push(typeof payload === 'string' ? 'string' : Object.prototype.toString.call(payload));
+    if (captureCaptionPackets && packet && captionDiagnostics.samples.length < 8) {
+      const sample = packet.slice(0, 4096); let encoded = ''; for (const byte of sample) encoded += String.fromCharCode(byte);
+      captionDiagnostics.samples.push({ bytes: packet.byteLength, base64: btoa(encoded) });
+    }
+    const transcript = captions.receive(payload);
+    if (transcript) {
+      captionDiagnostics.decoded++;
+      const scoped = { ...transcript, id: `${sessionId}:${transcript.id}` };
+      speechControls.receive(scoped);
+      options.onTranscript?.(scoped);
+    }
+  });
   client.on('user-published', async (user, mediaType) => {
     if (mediaType !== 'audio' || stopped) return;
     try {
@@ -128,10 +166,11 @@ export async function startVoiceSession(
     window.addEventListener('pagehide', onPageHide);
     events = new EventSource(`/api/voice/events?sessionId=${encodeURIComponent(sessionId)}`);
     events.addEventListener('command', async event => {
+      if (stopped || generation !== voiceGeneration) return;
       const instruction = JSON.parse((event as MessageEvent<string>).data) as { id: string; command: string };
       let result: VoiceCommandResult;
       try {
-        result = await onCommand(instruction.command);
+        result = await speechControls.executeTool(instruction.command);
         if (!result || typeof result.completed !== 'boolean') {
           result = { completed: false, error: 'The simulator did not report a verified command outcome.' };
         }

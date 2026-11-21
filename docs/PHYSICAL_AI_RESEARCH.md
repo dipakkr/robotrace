@@ -1,10 +1,10 @@
 # Physical-AI product direction and data handoff
 
-Research checked **21 November 2026**. Primary sources only. This document separates source-backed observations from proposed TeachTrace product decisions. It does not claim a partnership, a lab's willingness to ingest our data, or demonstrated improvement to any robot model.
+Research checked **21 November 2026**. Primary sources only. This document separates source-backed observations from proposed RoboTrace product decisions. It does not claim a partnership, a lab's willingness to ingest our data, or demonstrated improvement to any robot model.
 
 ## Recommended product
 
-> TeachTrace helps robotics employees turn task briefs into executable simulation assignments, inspect decisions and failures, collect and review episodes, and deliver reproducible data packages to a downstream robotics workflow through a voice-assisted workbench.
+> RoboTrace helps robotics employees turn task briefs into executable simulation assignments, inspect decisions and failures, collect and review episodes, and deliver reproducible data packages to a downstream robotics workflow through a voice-assisted workbench.
 
 The employee is a robotics engineer, demonstration collector, or QA technician. Their output is an inspectable assignment/run/dataset, rather than simply a moving robot. Agora and Murf support task briefing, clarification, approval, exception resolution, and progress communication. The action tools execute work and persist its results.
 
@@ -32,7 +32,7 @@ Only attempt a contact-physics spike today if it can prove one stable pick/place
 
 MimicGen demonstrates adapting a limited set of human demonstrations to varied initial conditions, objects, and robot embodiments. Its published work includes generating and evaluating policies, rather than merely exporting motion clips. This establishes a research precedent for demonstration expansion, not that arbitrary generated movements are valid training demonstrations. [MimicGen project, NVIDIA/UT Austin](https://mimicgen.github.io/)
 
-RoboCasa provides genuine kitchen task families and separates pretraining environments from held-out target kitchens. Its dataset documentation also describes per-frame subtask labels for target composite tasks. This is a useful reference for distinct environments, task composition, and evaluation splits. Do not copy its published results or dataset-scale claims into TeachTrace's own metrics. [RoboCasa dataset overview](https://robocasa.ai/docs/build/html/datasets/datasets_overview.html)
+RoboCasa provides genuine kitchen task families and separates pretraining environments from held-out target kitchens. Its dataset documentation also describes per-frame subtask labels for target composite tasks. This is a useful reference for distinct environments, task composition, and evaluation splits. Do not copy its published results or dataset-scale claims into RoboTrace's own metrics. [RoboCasa dataset overview](https://robocasa.ai/docs/build/html/datasets/datasets_overview.html)
 
 Human videos are a possible additional data source, but robot/human differences require care. Physical Intelligence's reported transfer method combines relevant robot data with human demonstrations and represents the latter through tracked 3D hand positions. A phone video alone is not equivalent to that pipeline. [Physical Intelligence research](https://www.pi.website/research/human_to_robot)
 
@@ -48,7 +48,7 @@ LeRobot now documents local and remotely served simulation through a shared envi
 
 ## Three useful levels of output
 
-| Level | What TeachTrace supplies | Defensible use | Gate before claiming the next level |
+| Level | What RoboTrace supplies | Defensible use | Gate before claiming the next level |
 | --- | --- | --- | --- |
 | **A: current kinematic workflow** | Scene definitions, explicit goals, tool plans, simulator poses, idealized grasp state, event history, review status | Workflow demos, controller-logic regression, debug traces, annotation/curation experiments | Add a validated dynamics backend and a documented sensor/action contract |
 | **B: physics-backed simulated episodes** | Versioned robot/environment assets, actual simulator control inputs, synchronized simulated observations and states, contacts/outcomes where supported | Candidate simulation benchmark or imitation-learning data, after importer/quality checks | Demonstrate training and held-out evaluation for a specified policy/environment |
@@ -135,7 +135,7 @@ Current commanded end-effector motion or pose differences must not be silently r
 
 There is no general-purpose public endpoint that accepts arbitrary simulation logs into all frontier robotics models. Treat a lab's ingestion requirements and acceptance as a separate integration/partnership decision.
 
-**November 2026 update:** Physical Intelligence announced a Pi API beta on 13 October 2026 with customer-data upload, managed fine-tuning and hosted inference. This provides a concrete potential future integration, subject to access and the actual data/embodiment contract. It does not establish acceptance of TeachTrace's kinematic logs or universal compatibility. [PI announcement](https://www.pi.website/blog/api-beta)
+**November 2026 update:** Physical Intelligence announced a Pi API beta on 13 October 2026 with customer-data upload, managed fine-tuning and hosted inference. This provides a concrete potential future integration, subject to access and the actual data/embodiment contract. It does not establish acceptance of RoboTrace's kinematic logs or universal compatibility. [PI announcement](https://www.pi.website/blog/api-beta)
 
 1. Select a specific target workflow: e.g. a LeRobot-compatible local evaluation or a recipient's documented importer.
 2. Agree on embodiment, task family, action/observation schema, required modalities, license and intended use.

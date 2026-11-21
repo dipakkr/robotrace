@@ -1,4 +1,4 @@
-# TeachTrace delivery contract
+# RoboTrace delivery contract
 
 Updated **21 November 2026**. The original seven-hour arm-only schedule is
 historical. The current product includes household workcell tasks, mobile
@@ -8,7 +8,7 @@ pilot and production operations.
 
 ## Employee and work product
 
-**TeachTrace is a voice-operated task and evidence console for a robotics data
+**RoboTrace is a voice-operated task and evidence console for a robotics data
 or evaluation engineer.** The employee defines a supported household task,
 reviews its exact plan, observes execution/failures and explicitly saves a
 checked record for the team. It runs on a laptop without physical robot hardware.

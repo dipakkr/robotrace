@@ -29,10 +29,10 @@ The CLI cloned `AgoraIO-Conversational-AI/agent-quickstart-nextjs` to ignored `.
 - rtc_client_connected: false
 - integrated_voice_roundtrip_verified: false
 
-Source inspection and compilation are not runtime proof. Verify the reference app with its documented commands, then verify the actual TeachTrace + Murf + tool workflow. No free-minute allowance is claimed as activated until the account confirms it.
+Source inspection and compilation are not runtime proof. Verify the reference app with its documented commands, then verify the actual RoboTrace + Murf + tool workflow. No free-minute allowance is claimed as activated until the account confirms it.
 
 The official reference app was launched with its documented `pnpm dev` command at localhost:3000 after the template-aware CLI env write. Agora project doctor passes: account access, RTC, RTM, Conversational AI, App credentials and token capability. This is still not proof of a voice round trip.
 
 Live server-side reference check: `/api/invite-agent` returned HTTP 200 and RUNNING from a real Agora start; `/api/stop-conversation` returned HTTP 200/success. The agent was stopped immediately. No browser RTC connection or audible round trip is claimed.
 
-Product verification: real TeachTrace agent start returned HTTP 201 and stop returned HTTP 200; the configured LLM returned HTTP 200; Murf Falcon returned HTTP 200 with 71,708 bytes of WAV speech. The public callback reached the tool-only service and returned the expected unauthenticated HTTP 401. Configuration reports no missing required settings. Audible browser playback and natural-voice tool execution still need verification.
+Product verification: real RoboTrace agent start returned HTTP 201 and stop returned HTTP 200; the configured LLM returned HTTP 200; Murf Falcon returned HTTP 200 with 71,708 bytes of WAV speech. The public callback reached the tool-only service and returned the expected unauthenticated HTTP 401. Configuration reports no missing required settings. Audible browser playback and natural-voice tool execution still need verification.

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ownedProcess, callbackOrigin, callbackFromLog, callbackFromEnv, updateCallbackEnv, runDemo } from './demo.mjs';
 
-const project = '/workspace/TeachTrace';
+const project = '/workspace/RoboTrace';
 const owns = (kind, command, cwd = project) => ownedProcess({ kind, command, cwd, project });
 
 test('API ownership requires both the exact project cwd and the actual Node server command', () => {

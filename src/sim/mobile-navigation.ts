@@ -2,6 +2,9 @@ export type MobilePoint = [number, number]; // Floor x/z, in simulated meters.
 export type MobileStationId = 'counter' | 'table' | 'sink' | 'home';
 export type MobileMode = 'idle' | 'running' | 'paused' | 'stopped' | 'error';
 export interface MobileObstacle { id: string; label: string; minX: number; maxX: number; minZ: number; maxZ: number }
+export const MOBILE_FLOOR_BLOCK_ID = 'sandbox-floor-block';
+export const MOBILE_FLOOR_BLOCK_LABEL = 'Movable floor block';
+export const MOBILE_FLOOR_BLOCK_SIZE = 0.7;
 export interface MobileStation { id: MobileStationId; label: string; dock: MobilePoint; surface: MobilePoint; height: number }
 export interface MobileObject {
   id: string; label: string; position: MobilePoint; height: number;
@@ -12,7 +15,7 @@ export type MobileStep =
   | { kind: 'reach-check' | 'pickup' | 'place'; stationId: MobileStationId; objectId: string; label: string };
 export interface MobilePlan {
   id: string; worldRevision: number; command: string; summary: string; rationale: string[]; steps: MobileStep[]; confirmationRequired: boolean;
-  goal?: { objectId?: string; stationId: MobileStationId }; error?: string; control?: 'pause' | 'resume' | 'stop' | 'reset';
+  goal?: { objectId?: string; stationId: MobileStationId; hold?: true }; error?: string; control?: 'pause' | 'resume' | 'stop' | 'reset';
 }
 export interface MobileWorld {
   schema: 'teachtrace.mobile-kitchen.v1'; seed: number; simTime: number; revision: number; distanceTravelled: number;
@@ -150,14 +153,23 @@ export function planMobileTask(text: string, world: MobileWorld): MobilePlan {
   const base: MobilePlan = { id: `mobile-${world.revision}-${command.replace(/\W+/g, '-').slice(0, 80)}`, worldRevision: world.revision, command: text, summary: '', rationale: [], steps: [], confirmationRequired: false };
   const controls = { pause: 'pause', resume: 'resume', continue: 'resume', stop: 'stop', abort: 'stop', reset: 'reset' } as const;
   if (Object.hasOwn(controls, command)) return { ...base, summary: `${command} mobile mission`, control: controls[command as keyof typeof controls], confirmationRequired: command === 'reset' };
-  const destinationMatches = [...command.matchAll(/\b(?:to|into|onto)\s+(?:the\s+)?(counter|table|sink|home|dock)\b/g)].map(match => match[1] === 'dock' ? 'home' : match[1]);
+  const objects = world.objects.filter(object => new RegExp(`\\b${object.id}\\b`, 'i').test(command) || new RegExp(`\\b${object.label}\\b`, 'i').test(command));
+  const hold = /^(?:please )?(?:pick up|carry)\b/.test(command);
+  const pickupSource = command.match(/^(?:please )?pick up (?:the )?(?:cup|bowl) (?:at|on) (?:the )?(counter|table|sink|home)$/)?.[1];
+  const destinationMatches = pickupSource ? [] : [...command.matchAll(/\b(?:to|into|onto|in|at)\s+(?:the\s+)?(counter|table|sink|home|dock)\b/g)].map(match => match[1] === 'dock' ? 'home' : match[1]);
+  const bareNavigation = command.match(/^(?:please )?(?:go|navigate|drive)(?: to)? (?:the )?(counter|table|sink|home|dock)$/);
+  if (bareNavigation) destinationMatches.push(bareNavigation[1] === 'dock' ? 'home' : bareNavigation[1]);
+  if (/^(?:please )?pick up\b/.test(command) && !destinationMatches.length && objects.length === 1) {
+    if (objects[0].station === 'robot') return { ...base, summary: 'Object already held.', error: `${objects[0].label} is already held. Name a station to carry it to, or a surface to place it on.` };
+    destinationMatches.push(objects[0].station);
+  }
   if (/^(?:return|go|navigate)(?: to)? home$/.test(command)) destinationMatches.push('home');
   const destinations = [...new Set(destinationMatches)];
   if (destinations.length !== 1) return { ...base, summary: 'Choose one destination.', error: 'Name one destination: counter, table, sink, or home.' };
   const destination = world.stations.find(station => station.id === destinations[0]);
   if (!destination) return { ...base, summary: 'Unknown station.', error: 'The destination station is not available.' };
-  const objects = world.objects.filter(object => new RegExp(`\\b${object.id}\\b`, 'i').test(command) || new RegExp(`\\b${object.label}\\b`, 'i').test(command));
-  const remainder = command.replace(/\b(take|bring|carry|deliver|move|transport|pick|up|place|put|go|navigate|drive|return|please|the|a|an|robot|mobile|kitchen|from|to|into|onto|counter|table|sink|home|dock|cup|bowl)\b/g, '').replace(/[\s,]/g, '');
+  const grammarCommand = hold ? command.replace(/\band\s+(?=(?:go|navigate|drive)\s+(?:to\s+)?(?:the\s+)?(?:counter|table|sink|home|dock)\b)/, '') : command;
+  const remainder = grammarCommand.replace(/\b(take|bring|carry|deliver|move|transport|pick|up|place|put|go|navigate|drive|return|please|the|a|an|robot|mobile|kitchen|from|to|into|onto|in|at|on|counter|table|sink|home|dock|cup|bowl)\b/g, '').replace(/[\s,]/g, '');
   if (remainder || objects.length > 1) return { ...base, summary: 'Clarify the mobile task.', error: 'Use one known object at a time and one named station, for example “Take cup from counter to sink”.' };
   const steps: MobileStep[] = [];
   let position: MobilePoint = [...world.robot.position];
@@ -171,26 +183,28 @@ export function planMobileTask(text: string, world: MobileWorld): MobilePlan {
     const reach = mobileObjectReach(world, object.id);
     base.rationale.push(reach.reachable ? `${object.label} is currently within the ${reach.armReach.toFixed(2)} m arm reach.`
       : `${object.label} is ${reach.distance.toFixed(2)} m away, beyond the ${reach.armReach.toFixed(2)} m stationary arm reach.`);
-    base.rationale.push(world.robot.cargoObjectId === object.id ? 'The object is already on the carrier; route directly to the delivery dock and place it on the requested surface.'
+    base.rationale.push(hold ? 'Retain the object on the carrier at the requested dock; no placement or release is requested.' : world.robot.cargoObjectId === object.id ? 'The object is already on the carrier; route directly to the delivery dock and place it on the requested surface.'
       : 'Route the mobile base to the pickup dock, recheck actual arm reach, then collect and carry the object to the requested surface.');
-    if (destination.id === 'home') return { ...base, summary: 'Choose a delivery surface.', error: 'Deliver objects to counter, table, or sink; home is a robot parking station.' };
+    if (!hold && destination.id === 'home') return { ...base, summary: 'Choose a delivery surface.', error: 'Deliver objects to counter, table, or sink; home is a robot parking station.' };
     if (world.robot.cargoObjectId && world.robot.cargoObjectId !== object.id) return { ...base, summary: 'Another object is on the carrier.', error: 'Deliver the currently carried object before collecting another.' };
-    if (object.station === destination.id && !world.robot.cargoObjectId) return { ...base, summary: 'Object already delivered.', error: `${object.label} is already at ${destination.label}.` };
+    if (!hold && object.station === destination.id && !world.robot.cargoObjectId) return { ...base, summary: 'Object already delivered.', error: `${object.label} is already at ${destination.label}.` };
     const source = world.stations.find(station => station.id === object.station);
-    const explicitSource = command.match(/\bfrom\s+(?:the\s+)?(counter|table|sink)\b/)?.[1];
+    const explicitSource = pickupSource ?? command.match(/\bfrom\s+(?:the\s+)?(counter|table|sink)\b/)?.[1];
     if (explicitSource && source?.id !== explicitSource) return { ...base, summary: 'The stated source does not match the scene.', error: `${object.label} is currently at ${source?.label ?? 'the robot carrier'}.` };
     if (!world.robot.cargoObjectId) {
       if (!source || !navigate(source)) return { ...base, summary: 'No clear route to the object.', error: 'The known floor map has no collision-free route to the pickup station.' };
       steps.push({ kind: 'reach-check', stationId: source.id, objectId: object.id, label: `Recheck ${object.label} within arm reach` });
       steps.push({ kind: 'pickup', stationId: source.id, objectId: object.id, label: `Collect ${object.label} at ${source.label}` });
     }
-    if (!navigate(destination)) return { ...base, summary: 'No clear delivery route.', error: 'The known floor map has no collision-free route to the delivery station.' };
-    steps.push({ kind: 'place', stationId: destination.id, objectId: object.id, label: `Deliver ${object.label} to ${destination.label}` });
+    if (!hold || distance(position, destination.dock) > EPSILON || !steps.length) {
+      if (!navigate(destination)) return { ...base, summary: 'No clear delivery route.', error: 'The known floor map has no collision-free route to the delivery station.' };
+    }
+    if (!hold) steps.push({ kind: 'place', stationId: destination.id, objectId: object.id, label: `Deliver ${object.label} to ${destination.label}` });
   } else {
-    if (!/^(?:please )?(?:(?:go|navigate|drive|return|move) to (?:the )?(?:counter|table|sink|home|dock)|(?:return|go|navigate)(?: to)? home)$/.test(command)) return { ...base, summary: 'Name an object to carry.', error: 'Choose Cup or Bowl, or ask the robot to navigate to a station.' };
+    if (!/^(?:please )?(?:(?:go|navigate|drive|return|move)(?: to)? (?:the )?(?:counter|table|sink|home|dock)|(?:return|go|navigate)(?: to)? home)$/.test(command)) return { ...base, summary: 'Name an object to carry.', error: 'Choose Cup or Bowl, or ask the robot to navigate to a station.' };
     if (!navigate(destination)) return { ...base, summary: 'No clear route.', error: 'The known floor map has no collision-free route to the station.' };
   }
-  return { ...base, summary: steps.map(step => step.label).join(' → '), steps, goal: { ...(object ? { objectId: object.id } : {}), stationId: destination.id } };
+  return { ...base, summary: steps.map(step => step.label).join(' → '), steps, goal: { ...(object ? { objectId: object.id, ...(hold ? { hold: true as const } : {}) } : {}), stationId: destination.id } };
 }
 
 export function mobileObjectReach(world: MobileWorld, objectId: string): { distance: number; armReach: number; reachable: boolean } {
@@ -234,8 +248,15 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
       if (!waypoint) { complete = true; }
       else {
         if (!mobileSegmentIsClear(world, world.robot.position, waypoint) || humanBlocks(world, waypoint)) {
+          const floorBlock = world.obstacles.find(obstacle => obstacle.id === MOBILE_FLOOR_BLOCK_ID);
+          const blockedByFloorBlock = !!floorBlock && hitsRectangle(world.robot.position, waypoint, floorBlock, world.robot.radius + 0.03);
+          const blockedByHuman = humanBlocks(world, waypoint);
           const route = findMobileRoute(world, world.robot.position, station.dock, { avoidHuman: true });
           if (!route) {
+            if (floorBlock && findMobileRoute({ ...world, obstacles: world.obstacles.filter(obstacle => obstacle.id !== MOBILE_FLOOR_BLOCK_ID) }, world.robot.position, station.dock, { avoidHuman: true })) {
+              world.robot.mode = 'paused'; world.robot.phase = 'Movable floor block leaves no clear route to the dock. Move or remove the block, then explicitly resume.';
+              event(world, 'blocked', world.robot.phase); return { world, done: false, blocked: world.robot.phase };
+            }
             if (world.human && findMobileRoute(world, world.robot.position, station.dock)) {
               world.robot.mode = 'paused'; world.robot.phase = 'Human scenario leaves no clear route to the dock. Move or clear the person, then explicitly resume.';
               event(world, 'blocked', world.robot.phase); return { world, done: false, blocked: world.robot.phase };
@@ -244,7 +265,8 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
           }
           const routeLength = (points: MobilePoint[]) => points.slice(1).reduce((sum, point, index) => sum + distance(points[index], point), 0);
           const priorLength = routeLength([[...world.robot.position], ...step.path.slice(mission.waypointIndex)]);
-          if (world.human) event(world, 'control', `Rerouted around the human scenario: ${routeLength(route).toFixed(2)} m remaining route, ${Math.max(0, routeLength(route) - priorLength).toFixed(2)} m added.`);
+          const reason = blockedByFloorBlock ? 'sandbox floor block' : blockedByHuman ? 'human scenario' : 'changed floor obstacles';
+          event(world, 'control', `Rerouted around the ${reason}: ${routeLength(route).toFixed(2)} m remaining route, ${Math.max(0, routeLength(route) - priorLength).toFixed(2)} m added.`);
           step.path = route; mission.waypointIndex = 1; waypoint = route[1];
           if (!waypoint) { complete = true; continue; }
         }
@@ -309,7 +331,7 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
     event(world, step.kind, step.label + ' verified.');
     mission.completedSteps++; mission.stepIndex++; mission.waypointIndex = 1; mission.phaseElapsed = 0; delete mission.handlingStart; world.revision++;
     if (mission.stepIndex === mission.plan.steps.length) {
-      mission.status = 'completed'; world.robot.mode = 'idle'; world.robot.phase = 'Mobile task completed'; event(world, 'goal', mission.plan.goal?.objectId ? 'Route and delivery goal verified.' : 'Navigation docking goal verified.');
+      mission.status = 'completed'; world.robot.mode = 'idle'; world.robot.phase = 'Mobile task completed'; event(world, 'goal', mission.plan.goal?.hold ? 'Pickup or carry goal verified; object remains held.' : mission.plan.goal?.objectId ? 'Route and delivery goal verified.' : 'Navigation docking goal verified.');
       return { world, done: true };
     }
   }
@@ -358,6 +380,30 @@ export function setMobileHuman(source: MobileWorld, position: MobilePoint | null
   return world;
 }
 
+/** One operator-positioned software obstacle; never moves the base, cargo, or clock. */
+export function setMobileFloorObstacle(source: MobileWorld, position: MobilePoint | null): MobileAdvanceResult {
+  const previous = source.obstacles.find(obstacle => obstacle.id === MOBILE_FLOOR_BLOCK_ID);
+  if (position === null && !previous) return { world: source, done: false };
+  let obstacle: MobileObstacle | undefined;
+  if (position !== null) {
+    if (!Array.isArray(position) || position.length !== 2 || !position.every(Number.isFinite)) return { world: source, done: false, error: 'Choose a finite open-floor position for the movable block.' };
+    const half = MOBILE_FLOOR_BLOCK_SIZE / 2;
+    obstacle = { id: MOBILE_FLOOR_BLOCK_ID, label: MOBILE_FLOOR_BLOCK_LABEL, minX: position[0] - half, maxX: position[0] + half, minZ: position[1] - half, maxZ: position[1] + half };
+    const b = source.bounds;
+    if (obstacle.minX < b.minX || obstacle.maxX > b.maxX || obstacle.minZ < b.minZ || obstacle.maxZ > b.maxZ) return { world: source, done: false, error: 'Keep the entire movable block inside the known floor bounds.' };
+    if (source.obstacles.some(item => item.id !== MOBILE_FLOOR_BLOCK_ID && obstacle!.minX <= item.maxX + .03 && obstacle!.maxX >= item.minX - .03 && obstacle!.minZ <= item.maxZ + .03 && obstacle!.maxZ >= item.minZ - .03)) return { world: source, done: false, error: 'Place the movable block on open floor, clear of fixed furniture.' };
+    if (hitsRectangle(source.robot.position, source.robot.position, obstacle, source.robot.radius + .03)) return { world: source, done: false, error: 'Place the movable block clear of the current robot base; the robot cannot be displaced.' };
+    if (source.human && hitsRectangle(source.human.position, source.human.position, obstacle, source.human.radius + .03)) return { world: source, done: false, error: 'Place the movable block clear of the person scenario.' };
+    if (previous && JSON.stringify(previous) === JSON.stringify(obstacle)) return { world: source, done: false };
+  }
+  const world = copy(source);
+  world.obstacles = world.obstacles.filter(item => item.id !== MOBILE_FLOOR_BLOCK_ID);
+  if (obstacle) world.obstacles.push(obstacle);
+  world.revision++;
+  event(world, 'control', position ? `Sandbox floor block ${previous ? 'moved to' : 'placed at'} (${position[0].toFixed(2)}, ${position[1].toFixed(2)}).` : 'Sandbox floor block removed; paused motion still requires explicit resume.');
+  return { world, done: false };
+}
+
 export function applyMobileControl(source: MobileWorld, control: 'pause' | 'resume' | 'stop' | 'reset'): MobileAdvanceResult {
   if (control === 'reset') return { world: createMobileKitchen(source.seed), done: false };
   const world = copy(source);
@@ -366,7 +412,7 @@ export function applyMobileControl(source: MobileWorld, control: 'pause' | 'resu
     if (humanBlocks(world, world.robot.position)) return { world: source, done: false, blocked: 'Clear the human obstruction before resuming.' };
     world.robot.mode = 'running'; world.robot.phase = world.mission.plan.steps[world.mission.stepIndex]?.label ?? 'Resuming mobile mission';
   } else if (control === 'stop') {
-    world.robot.mode = 'stopped'; world.robot.phase = 'Mobile mission stopped; cargo retained'; if (world.mission) world.mission.status = 'stopped';
+    world.robot.mode = 'stopped'; world.robot.phase = world.robot.cargoObjectId ? 'Mobile mission stopped; payload retained' : 'Mobile mission stopped; carrier is empty'; if (world.mission) world.mission.status = 'stopped';
   } else return { world: source, done: false, error: 'That control is not available in the current mobile state.' };
   world.revision++; event(world, 'control', `Operator ${control} applied.`);
   return { world, done: false };
@@ -377,6 +423,11 @@ export function mobileGoalChecks(world: MobileWorld): MobileGoalCheck[] {
   if (!goal) return [{ id: 'task-defined', name: 'Mobile goal is defined', passed: false, detail: 'Approve a grounded mobile task first.' }];
   const station = world.stations.find(item => item.id === goal.stationId);
   const object = world.objects.find(item => item.id === goal.objectId);
+  if (goal.hold) return [
+    { id: 'station-reached', name: `Robot reached ${station?.label ?? goal.stationId}`, passed: Boolean(station && distance(world.robot.position, station.dock) <= .05), detail: 'The base must reach the requested pickup or carry docking pose.' },
+    { id: 'object-held', name: `${object?.label ?? goal.objectId ?? 'Requested object'} remains held on the carrier`, passed: Boolean(goal.objectId && object && world.robot.cargoObjectId === object.id && object.station === 'robot' && object.status === 'carried' && distance(object.position, world.robot.position) <= 1e-6 && Math.abs(object.height - CARRY_HEIGHT) <= 1e-6), detail: 'Custody, carried status, base-aligned object position and carrier height must agree; pickup or carry does not release the object.' },
+    { id: 'controller-settled', name: 'Mobile controller settled with requested payload held', passed: world.robot.mode === 'idle' && world.mission?.status === 'completed', detail: 'A completed pickup or carry task leaves the requested object held on the settled carrier.' },
+  ];
   const offset = object ? (world.objects.findIndex(item => item.id === object.id) - (world.objects.length - 1) / 2) * 0.28 : 0;
   return [
     { id: 'station-reached', name: `Robot reached ${station?.label ?? goal.stationId}`, passed: Boolean(station && distance(world.robot.position, station.dock) <= 0.05), detail: 'The mobile base must reach the actual station docking pose.' },

@@ -1,4 +1,4 @@
-# TeachTrace: from one reviewed household task to many useful tests
+# RoboTrace: from one reviewed household task to many useful tests
 
 Research checked **21 November 2026**, using primary company pages, official repositories and research projects. Company statements below are attributed claims, not independent audits. Recommendations and proposed features are marked as such. No partnership, customer, frontier-model integration, training improvement, or hackathon result is implied.
 
@@ -10,34 +10,34 @@ The near-term output is a **reproducible task case and its observed outcomes**. 
 
 The strongest proposed demo message is:
 
-> One reviewed household task can become many reproducible decision tests. TeachTrace shows which plans satisfy the task, which disturb a protected item, and which need better demonstrations or a different controller.
+> One reviewed household task can become many reproducible decision tests. RoboTrace shows which plans satisfy the task, which disturb a protected item, and which need better demonstrations or a different controller.
 
 This is more defensible than claiming that a phone video instantly trains a robot. It also acknowledges a crowded market: collection, annotation, simulation and model-training platforms already exist.
 
 ## What the primary evidence actually says
 
-| Organization / project | Verified public statement | What it does **not** establish for TeachTrace |
+| Organization / project | Verified public statement | What it does **not** establish for RoboTrace |
 | --- | --- | --- |
 | **Pronto** | Its July 2026 Verified terms permit captured household-service data to support anonymized AI training, including third-party models. Its FAQ describes Verified footage as dispute-related with deletion. These public descriptions are not fully aligned. [Terms](https://www.withpronto.com/verified-tnc/), [FAQ](https://www.withpronto.com/frequently-asked-questions/) | A named data buyer, actual delivery format, a robotics training result, or access to its footage. Do not resolve inconsistent public descriptions by guessing. |
 | **Sunday Robotics** | Its technology page describes household Memory Developers, Skill Capture Gloves, and an integrated collection/training/evaluation process. It lists sensing beyond ordinary video. [Sunday technology](https://www.sunday.ai/technology) | That phone-only capture reproduces its sensing, or that its robot capabilities are available through our application. |
 | **micro1** | Its robotics offering includes expert demonstrations, temporal/action annotation, multimodal capture, QC and evaluation. [Robotics offering](https://www.micro1.ai/robotics) | A market gap for a generic annotation platform, a customer commitment, or transferable performance from its data to ours. |
 | **micro1 flow** | Its September 2026 product description already combines expert review, generated variations, QC/grading, and linked camera/3D evidence in robotics workflows. [flow](https://www.micro1.ai/blog/introducing-flow) | Novelty for the broad phrase “human-data-to-robot bridge.” Our distinction must be a specific executable workflow and measured usability, not that phrase. |
 | **Generalist** | Its privacy policy describes human-operated Data Hands and task/sensor data. Its GEN-1.5 article describes sensorimotor demonstration prompts and reports emerging one/few-shot behavior on its own system. [Data Hands policy](https://generalistai.com/privacy-policy), [GEN-1.5](https://generalistai.com/blog/gen-1.5) | That a generic text plan, a phone frame, or our kinematic trace is an equivalent physical prompt for that model. |
-| **Physical Intelligence** | Its human-to-robot work combines human demonstrations represented by 3D hand tracks with relevant robot data and a broadly pretrained VLA. [Research](https://www.pi.website/research/human_to_robot) | That raw human video alone supplies robot motor commands, or that TeachTrace has reproduced its training method. |
+| **Physical Intelligence** | Its human-to-robot work combines human demonstrations represented by 3D hand tracks with relevant robot data and a broadly pretrained VLA. [Research](https://www.pi.website/research/human_to_robot) | That raw human video alone supplies robot motor commands, or that RoboTrace has reproduced its training method. |
 | **Skild AI** | It describes human-video learning with a pretrained embodiment-transfer model and reports a separate simulation self-play post-training result. [Learning by watching](https://www.skild.ai/blogs/learning-by-watching), [Physical self-play](https://www.skild.ai/blogs/physical-self-play) | That data generation without fresh filming needs no base model, robot grounding, simulation fidelity or evaluation. |
 | **Pi API beta** | PI announced an upload/fine-tuning/hosted-inference workflow on 13 October 2026. [Announcement](https://www.pi.website/blog/api-beta) | Universal access, acceptance of arbitrary browser logs, a verified schema adapter, or permission to use any third-party dataset. |
 | **Apple EgoDex** | The research pairs egocentric video with calibrated hand/finger tracking. Its repository documents frames, confidence, generated-language errors and a separate dataset license. [Research](https://machinelearning.apple.com/research/egodex-learning-dexterous-manipulation), [Repository](https://github.com/apple-aiml-research/ml-egodex) | That an ordinary phone reference has equivalent pose quality, or that public availability implies unrestricted commercial reuse/derivatives. |
 | **UMI** | The project uses handheld grippers and a designed action/policy interface, including relative trajectories and latency considerations, to bridge portable demonstrations and robot policies. [UMI](https://umi-gripper.github.io/) | Hardware-free recovery of all those channels from arbitrary household clips. |
 | **Scale** | Its manipulation-captioning report emphasizes correct action, object and destination together; visually plausible language can still name the wrong object. [Captioning research](https://labs.scale.com/blog/path-to-large-scale-dense-video-captioning) | That caption fluency or semantic similarity alone is a quality gate. |
 | **MimicGen** | It expands a small collection of demonstrations into new task configurations and evaluates learned policies. [Project](https://mimicgen.github.io/) | That every generated motion succeeds, that new physical skills appear without supporting data, or that our deterministic controller is the learned policy in that work. |
-| **Isaac Lab Mimic / GR00T workflow** | Official documentation describes annotated object-relative subtasks, transformed trajectories, execution and success filtering; supplied recordings allow a tutorial without collecting fresh demonstrations. [Mimic documentation](https://isaac-sim.github.io/IsaacLab/main/source/features/imitation-learning/teleop_imitation.html), [NVIDIA workflow](https://developer.nvidia.com/blog/building-a-synthetic-motion-generation-pipeline-for-humanoid-robot-learning/) | A laptop-native replacement for Isaac's supported compute stack or a ready importer for TeachTrace's current records. |
+| **Isaac Lab Mimic / GR00T workflow** | Official documentation describes annotated object-relative subtasks, transformed trajectories, execution and success filtering; supplied recordings allow a tutorial without collecting fresh demonstrations. [Mimic documentation](https://isaac-sim.github.io/IsaacLab/main/source/features/imitation-learning/teleop_imitation.html), [NVIDIA workflow](https://developer.nvidia.com/blog/building-a-synthetic-motion-generation-pipeline-for-humanoid-robot-learning/) | A laptop-native replacement for Isaac's supported compute stack or a ready importer for RoboTrace's current records. |
 | **RoboCasa365** | It combines diverse kitchen tasks, interaction skills, mobile embodiments, automated generation and systematic policy evaluation. [Official project](https://robocasa.ai/) | That decorative cupboards in a browser are interactive or that a stationary tabletop arm can perform mobile household work. |
 
 These sources support the opportunity to improve data operations. They also establish that the surrounding infrastructure is already competitive. **micro1 flow is a particularly close reference**; cloning its appearance would not establish an advantage.
 
 ### An important correction to the Pronto narrative
 
-The evidence supports saying that Pronto **publishes terms contemplating household recordings for AI-related uses**. Its public FAQ uses a narrower description. Neither page identifies a frontier robotics recipient or demonstrates a model trained on these recordings. TeachTrace should not present a fictional Pronto integration, assume commercial access, or say that its users' homes are training a named lab's robots.
+The evidence supports saying that Pronto **publishes terms contemplating household recordings for AI-related uses**. Its public FAQ uses a narrower description. Neither page identifies a frontier robotics recipient or demonstrates a model trained on these recordings. RoboTrace should not present a fictional Pronto integration, assume commercial access, or say that its users' homes are training a named lab's robots.
 
 Use an owner-created reference, a purpose-permitted licensed seed, or a clearly authored synthetic task. A future collection partner would need to specify the actual media/metadata contract and permitted use. This is a product-design requirement, not a claim that a consent checkbox in a demo grants rights to a commercial corpus.
 
@@ -47,7 +47,7 @@ There is a useful distinction between a model that reasons about a task and a mo
 
 Google DeepMind's current robotics materials separate embodied reasoning from lower-level action execution. PI's Hi Robot work similarly uses high-level language reasoning with a lower-level VLA and studies synthetic interaction labels. These are research precedents for a layered architecture; they do not turn our planner into those robot policies. [DeepMind embodied reasoning](https://deepmind.google/models/gemini-robotics/embodied-reasoning/), [Hi Robot](https://www.pi.website/research/hirobot)
 
-| Layer | What an AI company needs | TeachTrace today | Proposed next integration |
+| Layer | What an AI company needs | RoboTrace today | Proposed next integration |
 | --- | --- | --- | --- |
 | Perception / reference interpretation | Objects, interactions, uncertainty, time, calibration where required | A selected reference plus a bounded reviewed scene proposal | Review measured versus inferred fields; add temporal annotation and evidence links |
 | Task reasoning | Correct goals, exceptions, object identity, ordering and recovery | Exact task assignments and human/model/baseline plan comparison | Versioned task graphs, correction benchmarks, explicit abstention tests |
@@ -70,7 +70,7 @@ PI's beta is now a concrete possible future destination: it describes customer d
 | Simulated robot trajectory | Yes, with a suitable simulator/controller and compatible source | A newly executed trajectory under declared simulated conditions | Real-world validation and any sensor/control channels not recorded |
 | New physical human/robot demonstration | No: replaying or transforming old data does not make a new measurement | New capture from a person/robot | Nothing substitutes for that fresh measured interaction when it is required |
 
-### Route A — the laptop path TeachTrace can implement first
+### Route A — the laptop path RoboTrace can implement first
 
 Start from one frozen, approved household task. Generate supported initial-state variations, run candidates through the existing controller, retain actual checks and failures, and export the tested cases with their lineage. This can run without filming another clip or making another paid model request if a deterministic candidate is reused.
 
@@ -99,7 +99,7 @@ new end-effector pose(t)
     × seed end-effector pose(t)
 ```
 
-All transforms must have compatible frames and units. A transformed path can still fail reach, joint, collision or contact constraints. It must be executed and checked, rather than marked successful because a matrix multiplication worked. The current TeachTrace engine stores a much narrower kinematic representation; it should replan its supported primitive from the new source state, rather than pretend it has implemented general 6-DoF demonstration retargeting. [Official Mimic transform implementation](https://isaac-sim.github.io/IsaacLab/v2.2.1/_modules/isaaclab_mimic/datagen/data_generator.html)
+All transforms must have compatible frames and units. A transformed path can still fail reach, joint, collision or contact constraints. It must be executed and checked, rather than marked successful because a matrix multiplication worked. The current RoboTrace engine stores a much narrower kinematic representation; it should replan its supported primitive from the new source state, rather than pretend it has implemented general 6-DoF demonstration retargeting. [Official Mimic transform implementation](https://isaac-sim.github.io/IsaacLab/v2.2.1/_modules/isaaclab_mimic/datagen/data_generator.html)
 
 Isaac's documented workflow is Linux-based, and its example parallel-generation settings assume substantial GPU resources. Treat this as a separate validated pilot or remote worker, not a critical dependency on the owner's M4 Pro laptop. Pin a supported version and prove one complete generated episode before discussing scale. [Supported workflow and compute examples](https://isaac-sim.github.io/IsaacLab/main/source/features/imitation-learning/teleop_imitation.html)
 
@@ -115,7 +115,7 @@ Existing data is not automatically reusable for every purpose. EgoDex's reposito
 
 Skild's September 2026 self-play announcement illustrates another route: an existing capable model creates interactions in simulation and improves through a post-training procedure. That is different from generating more labels or transforming a seed. It requires a policy, meaningful observations/actions, an environment, rewards and evaluation. It is a company-reported result on its system, not an outcome reproduced here. [Skild physical self-play](https://www.skild.ai/blogs/physical-self-play)
 
-TeachTrace currently has a deterministic kinematic controller. Running it repeatedly is not reinforcement learning or self-play. A future policy experiment must detect reward shortcuts and preserve a held-out evaluation that the data-generation process cannot rewrite.
+RoboTrace currently has a deterministic kinematic controller. Running it repeatedly is not reinforcement learning or self-play. A future policy experiment must detect reward shortcuts and preserve a held-out evaluation that the data-generation process cannot rewrite.
 
 ### When fresh capture is still needed
 
@@ -205,7 +205,7 @@ Compare candidates on the same frozen scenes and report paired case-level result
 
 A credible later experiment compares a fixed policy/training recipe on: original permitted demonstrations; the same source plus generated data; and, if feasible, an equal-budget fresh-data comparator. Keep held-out scenes, compute, tuning budget and evaluation protocol fixed. Report task-wise successes/failures and domain-gap limitations. A successful importer or a larger dataset does not establish improved learning.
 
-Do not copy the performance numbers of PI, Generalist, NVIDIA or MimicGen into TeachTrace's results. Their models, sensors, data scales and protocols differ.
+Do not copy the performance numbers of PI, Generalist, NVIDIA or MimicGen into RoboTrace's results. Their models, sensors, data scales and protocols differ.
 
 ## Hackathon differentiation and demo
 
@@ -232,7 +232,7 @@ Compared with existing tools, proposed advantages to test are: laptop-accessible
 
 Start with a robotics demonstration or QA team that already possesses permitted recordings and clear task requirements. Ask it to supply a small set of representative references, its current review process, and a specific consumer for the output. The experiment is whether a second engineer can understand the approved goals, reproduce a failure, and select a useful next collection task with less rework.
 
-Compare the same assignments using the team's existing tools and TeachTrace. Measure semantic corrections, review duration, reproducibility, consumer-load success and whether the resulting failure request leads to relevant additional evidence. Ask which part is sufficiently painful to pay for; do not infer willingness to pay from an attractive simulation.
+Compare the same assignments using the team's existing tools and RoboTrace. Measure semantic corrections, review duration, reproducibility, consumer-load success and whether the resulting failure request leads to relevant additional evidence. Ask which part is sufficiently painful to pay for; do not infer willingness to pay from an attractive simulation.
 
 A collection company might use this workflow, build it internally, or already have an equivalent. A frontier lab might want only the resulting cases rather than another dashboard. Those alternatives should influence the integration and pricing hypothesis. No buyer interview, procurement result or cost saving is claimed by this research.
 

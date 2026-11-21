@@ -11,7 +11,7 @@ work can continue without exposing them in chat.
 
 - [x] Official Agora CLI 0.2.10 installed; browser OAuth login completed.
 - [x] Agora project doctor passes for the configured project.
-- [x] TeachTrace's certificate-authenticated real agent start returned HTTP 201;
+- [x] RoboTrace's certificate-authenticated real agent start returned HTTP 201;
   the agent was stopped successfully with HTTP 200.
 - [x] Latest reported automated test run: 65 passing tests.
 - [ ] Browser RTC microphone publishing verified in a real session.
@@ -30,8 +30,8 @@ prove audio playback or a complete workplace voice demonstration.
 - [ ] For a separate official reference, use `agora init my-voice-reference --template nextjs`.
   For an already cloned reference, use `agora quickstart env write PATH_TO_REFERENCE --project "YOUR_PROJECT_NAME"`;
   the CLI selects its template-specific env path. Keep reference code separate
-  from TeachTrace. See [the exact reference commands](../server/SETUP.md).
-- [ ] Create/select a dedicated TeachTrace project.
+  from RoboTrace. See [the exact reference commands](../server/SETUP.md).
+- [ ] Create/select a dedicated RoboTrace project.
 - [ ] On project Home, open **Manage credentials**. Save the **App ID** as
   `AGORA_APP_ID` and **Primary certificate** as `AGORA_APP_CERTIFICATE`.
 - [ ] Under **RTC Services → Intelligence**, enable **Conversational AI Engine**.

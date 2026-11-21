@@ -6,7 +6,23 @@ The JSON artifacts below are ignored local QA records in this development
 checkout; they are not included in a fresh clone. Linked scripts reproduce the
 corresponding checks, with provider tests requiring an explicitly intended call.
 
-## Latest interaction and regression release
+## Current RoboTrace voice-only kitchen release
+
+The entry is `/kitchen`, titled **Free Kitchen Navigation Environment**. It automatically attempts voice connection once the scene is ready. The mobile sandbox has no task dropdown form or command textbox. English/Hindi/Hinglish input is configured; Murf spoken replies remain English.
+
+| Current check | Observed result | Local evidence |
+| --- | --- | --- |
+| Full automated suite | **387 pass**: 226 simulation/data and 161 server/script tests. Includes distinct navigation/pickup/held carry/release, strict fast speech controls, multilingual configuration and persistent evidence. | `latest-robotrace-tests.log` |
+| Route and voice lifecycle | Three isolated browser checks pass: direct `/kitchen`, one auto-connect attempt per entry, browser navigation, and explicit `?voice=off` test opt-out. Provider starts were intercepted in this lifecycle test. | `kitchen-route-results.json` |
+| Explicit custody primitives | Real browser pickup → navigate → place chain passes: pickup holds Cup, navigation keeps it held, explicit placement performs exactly one release. No provider calls. | `kitchen-hold-ui-results.json` |
+| Natural-language interpretation | One real model request interpreted a two-stage Cup→Sink→Table instruction; the actual controller planned the second source from Sink and preserved Bowl throughout. That earlier browser proof used the removed text-entry UI; current operation is voice-only. | `sandbox-intent-results.json` |
+| Continuous sandbox | Eight completed tasks without resetting, fresh queued sources, dynamic block detour, blocked-dock recovery and distinct integrity-checked traces. This recorded proof predates textbox removal; the controller remains tested independently. | `kitchen-sandbox-smoke-results.json` |
+| Longer trace persistence | Actual 1.18 MB dynamic-obstruction trace saved with HTTP 201 and an accepted independently checked unreviewed report. Native mobile upload/store bounds are now 8 MiB; unrelated request routes retain 1 MiB. | `kitchen-sandbox-dynamic-save-retry.json`, `sandbox-storage-limit-tests.log` |
+| Live transcript transport | Actual prerecorded-input session: 138 RTC frames, 60 decoded updates, three observed partial UI updates, both speakers and a completed delivery. Later two-column layout checks reuse recorded actual rows and are labelled accordingly. | `live-voice-captions-attempt2/results.json`, `layout-results.json` |
+
+The third combined prerecorded-input live check passed **4/4 workflow checks** through automatic `/kitchen` connection: navigation with no pickup, Hindi Stop and frozen clock, Hindi pickup, and Hindi held carrying to Sink with zero placements. Actual commands were Go to Sink, Stop, Pick up cup, Carry cup to Sink. Fast navigation dispatched 1 ms after its recognized transcript event. Hindi Stop used the LLM path: its first observed recognized caption to Stop acknowledgment was 2144 ms, not microphone latency. The strict direct Hindi Stop path was not observed for the garbled ASR prefix. Earlier failed rehearsals are preserved. Recognition errors and human microphone/speaker acceptance remain explicit limits. Evidence: `voice-speech-controls-attempt3/results.json`. See [voice transport and acceptance](VOICE_TRANSCRIPTS.md).
+
+## Earlier interaction and regression release
 
 The current console executes supported local commands immediately. It has one
 small, severity-colored activity terminal, no task approval tabs or countdown,

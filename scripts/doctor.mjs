@@ -92,7 +92,7 @@ export async function checkLocalHealth(env = {}, fetchImpl = fetch) {
       });
       let recognized = false;
       if (response.ok) {
-        if (target.type === 'ui') recognized = (await response.text()).includes('TeachTrace');
+        if (target.type === 'ui') recognized = (await response.text()).includes('RoboTrace');
         else {
           const data = await response.json();
           recognized = data?.available === true && typeof data?.configured === 'boolean';
@@ -121,13 +121,13 @@ export async function runDoctor({ env = process.env, args = [], fetchImpl = fetc
   if (args.includes('--health')) result.health = await checkLocalHealth(env, fetchImpl);
   if (args.includes('--json')) write(JSON.stringify(result, null, 2));
   else {
-    write('TeachTrace configuration doctor — values are never displayed.');
+    write('RoboTrace configuration doctor — values are never displayed.');
     for (const check of result.checks) {
       const mark = !check.present && check.optional ? 'OPTIONAL' : !check.present || check.valid === false ? 'NEEDS SETUP' : 'OK';
       write(`[${mark}] ${check.name}: ${check.message}`);
     }
     for (const health of result.health ?? []) {
-      write(`[${health.reachable && health.recognized ? 'OK' : 'UNAVAILABLE'}] ${health.name}: ${health.recognized ? 'TeachTrace service recognized.' : 'Service not recognized or unavailable.'}`);
+      write(`[${health.reachable && health.recognized ? 'OK' : 'UNAVAILABLE'}] ${health.name}: ${health.recognized ? 'RoboTrace service recognized.' : 'Service not recognized or unavailable.'}`);
     }
     write(result.ready ? 'Local configuration checks passed. Live voice is still unverified.' : 'Configuration is incomplete. Follow docs/ACCOUNT_SETUP_CHECKLIST.md.');
     for (const note of result.notes) write(note);

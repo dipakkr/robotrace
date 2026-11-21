@@ -32,13 +32,35 @@ function interventions(run) {
   }
   return changes;
 }
+function liveLayoutInterventions(run) {
+ const id='sandbox-floor-block',fixed=w=>w.obstacles.filter(o=>o.id!==id);
+ const read=(w,placement=false)=>{
+  demand(Array.isArray(w.obstacles)&&new Set(w.obstacles.map(o=>o.id)).size===w.obstacles.length,'Recorded obstacle identities must remain unique.');
+  const b=w.bounds,o=w.obstacles.find(o=>o.id===id);if(!o)return null;
+  demand(Object.keys(o).length===6&&['id','label','minX','maxX','minZ','maxZ'].every(k=>Object.hasOwn(o,k))&&o.label==='Movable floor block'&&[o.minX,o.maxX,o.minZ,o.maxZ].every(finite)&&Math.abs(o.maxX-o.minX-.7)<=1e-9&&Math.abs(o.maxZ-o.minZ-.7)<=1e-9&&o.minX>=b.minX&&o.maxX<=b.maxX&&o.minZ>=b.minZ&&o.maxZ<=b.maxZ,'Invalid reserved live block geometry or label.');
+  demand(!fixed(w).some(f=>o.minX<=f.maxX+.03&&o.maxX>=f.minX-.03&&o.minZ<=f.maxZ+.03&&o.maxZ>=f.minZ-.03),'Live block overlaps fixed furniture.');
+  if(placement){const hits=(p,r)=>p[0]>=o.minX-r-.03&&p[0]<=o.maxX+r+.03&&p[1]>=o.minZ-r-.03&&p[1]<=o.maxZ+r+.03;demand(!hits(w.robot.position,w.robot.radius)&&(!w.human||!hits(w.human.position,w.human.radius)),'Live block overlaps the recorded base/person.');}return o;
+ };
+ let previous=run.initialWorld,prior=read(previous,true);const changes=[];
+ for(const sample of run.trajectory){const w=sample.world;demand(same(fixed(w),fixed(run.initialWorld)),'Fixed furniture changed in a live recording.');const current=read(w);
+  if(!same(current,prior)){if(current)read(w,true);const action=!current?'removed':!prior?'placed':'moved',x=current?(current.minX+current.maxX)/2:0,z=current?(current.minZ+current.maxZ)/2:0;
+   const marker=e=>{if(e.kind!=='control'||e.time!==w.simTime)return false;if(!current)return e.message==='Sandbox floor block removed; paused motion still requires explicit resume.';const match=e.message.match(/^Sandbox floor block (placed at|moved to) \((-?\d+\.\d{2}), (-?\d+\.\d{2})\)\.$/);return Boolean(match&&match[1]===(action==='placed'?'placed at':'moved to')&&Math.abs(Number(match[2])-x)<=.005000001&&Math.abs(Number(match[3])-z)<=.005000001);};
+   demand(w.revision>previous.revision&&w.events.filter(marker).length>previous.events.filter(marker).length,'Live block change lacks its explicit same-clock control intervention.');changes.push({time:w.simTime,action,obstacle:current?structuredClone(current):null});
+  }previous=w;prior=current;
+ }return changes;
+}
 function analyzeRun(run, { native = false, fallbackId } = {}) {
   demand(typeof run.id === 'string' && run.id.length <= 200 || fallbackId, 'The trace needs a bounded run ID.');
   validateWorld(run.initialWorld); validateWorld(run.finalWorld);
   demand(run.goal && typeof run.goal.objectId === 'string' && typeof run.goal.stationId === 'string', 'A task goal is required to identify protected objects.');
+  demand(Object.keys(run.goal).every(key=>['objectId','stationId','hold'].includes(key)) && ['counter','table','sink','home'].includes(run.goal.stationId) && (run.goal.hold === undefined || run.goal.hold === true), 'The task goal must use a supported object destination and optional explicit hold mode.');
   demand(run.initialWorld.objects.some(item => item.id === run.goal.objectId), 'The task target is missing from the initial scene.');
   demand(Array.isArray(run.trajectory) && run.trajectory.length > 0 && run.trajectory.length <= 20000, 'A bounded, nonempty recorded trajectory is required.');
   demand(same(run.trajectory[0].world, run.initialWorld) && same(run.trajectory.at(-1).world, run.finalWorld), 'Recorded endpoints do not match the supplied scene snapshots.');
+  const layoutInterventions = native ? liveLayoutInterventions(run) : [];
+  if(native)for(const [key,value] of Object.entries({sceneConditions:layoutInterventions.length?'live-operator-layout-interventions':'fixed-recorded-layout',layoutInterventions,matchedComparison:false})) {
+    demand((!layoutInterventions.length || run.provenance?.[key] !== undefined) && (run.provenance?.[key] === undefined || same(run.provenance[key],value)), 'Recorded live layout provenance disagrees with independently reconstructed interventions.');
+  }
   let previous = -Infinity;
   for (const sample of run.trajectory) {
     validateWorld(sample.world);
@@ -46,7 +68,7 @@ function analyzeRun(run, { native = false, fallbackId } = {}) {
     demand(finite(sample.time) && sample.time >= previous && Math.abs(sample.time - expected) <= 1e-7, 'Recorded sample clocks must be chronological and agree with the world.');
     previous = sample.time;
     demand(same(run.initialWorld.objects.map(item => item.id), sample.world.objects.map(item => item.id)), 'Recorded object identities changed.');
-    for (const key of ['seed', 'bounds', 'obstacles', 'stations']) demand(same(run.initialWorld[key], sample.world[key]), 'A supposedly frozen trace changed its scene conditions.');
+    for (const key of (native ? ['seed', 'bounds', 'stations'] : ['seed', 'bounds', 'obstacles', 'stations'])) demand(same(run.initialWorld[key], sample.world[key]), 'A supposedly frozen trace changed its scene conditions.');
     for (const key of ['radius', 'speed', 'armReach']) demand(same(run.initialWorld.robot[key], sample.world.robot[key]), 'A supposedly frozen trace changed robot capabilities.');
   }
   if (run.protectedObjectPolicy !== undefined) demand(same(run.protectedObjectPolicy, MOBILE_PROTECTED_POLICY), 'Unsupported protected-object policy; do not silently change the tolerance.');
@@ -78,6 +100,8 @@ function analyzeRun(run, { native = false, fallbackId } = {}) {
   });
   return { id: run.id ?? fallbackId, label: String(run.label ?? 'Recorded mobile attempt'), source: String(run.source ?? 'recorded simulator'),
     reportedControllerOutcome: run.outcome ?? run.finalWorld.mission?.status ?? 'unknown', reportedTaskAccepted: typeof run.taskAccepted === 'boolean' ? run.taskAccepted : null,
+    sceneConditions: layoutInterventions.length ? 'live-operator-layout-interventions' : 'fixed-recorded-layout', layoutInterventions, matchedComparison: false,
+    taskKind: run.goal.hold ? 'held-object-transport' : 'object-delivery', releaseRequired: !run.goal.hold,
     goal: run.goal, seed: run.initialWorld.seed, sampleCount: run.trajectory.length,
     durationSeconds: run.finalWorld.simTime - run.initialWorld.simTime, protectedObjects,
     protectedObjectsPassed: protectedObjects.every(item => item.independentlyPassed),

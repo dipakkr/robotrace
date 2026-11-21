@@ -10,7 +10,7 @@ export interface MobileMatchedPair {
   seed: number;
   initialSceneSha256: string;
   provenance: {
-    producer: 'TeachTrace';
+    producer: 'RoboTrace';
     comparison: 'matched-symbolic-controller-evaluation';
     humanReviewPerformed: false;
     liveHumanRunIncluded: false;
@@ -101,7 +101,7 @@ export async function buildMobileMatchedPair(runs: readonly [MobileCandidateResu
     instruction: options.instruction ?? `Deliver ${goal.objectId} to ${goal.stationId}. Leave unrequested objects untouched.`,
     goal, seed: snapshot[0].initialWorld.seed, initialSceneSha256: await hashMobilePairScene(snapshot[0].initialWorld, goal),
     provenance: {
-      producer: 'TeachTrace' as const, comparison: 'matched-symbolic-controller-evaluation' as const,
+      producer: 'RoboTrace' as const, comparison: 'matched-symbolic-controller-evaluation' as const,
       humanReviewPerformed: false as const, liveHumanRunIncluded: false as const, trainingValidated: false as const, physicalTransferValidated: false as const, interventionSchedule: 'none-recorded' as const,
       sourceAttribution: 'Original result IDs, source/model labels and local-service metadata are preserved; labels are not authenticated provider attribution.',
       limitations: ['High-level symbolic plans and deterministic kinematic execution, not a VLA or motor-policy benchmark.', 'No measured encoders, contact dynamics, training-library adapter or physical transfer validation.', 'SHA-256 verifies package consistency, not authorship or physical truth.'] },

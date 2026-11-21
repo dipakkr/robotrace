@@ -1,4 +1,4 @@
-# TeachTrace: problem, workplace fit and defensible impact
+# RoboTrace: problem, workplace fit and defensible impact
 
 **A voice-operated task and evidence console for a household robotics team.**
 The employee is a robotics data collector or evaluation engineer. Their output
@@ -11,7 +11,7 @@ surface, whether the arm can reach, what must remain untouched and what to do
 when a person interrupts. A robot animation does not answer those questions or
 make its coordinates suitable training data.
 
-TeachTrace connects the instruction, scene, exact plan, observed states, checks,
+RoboTrace connects the instruction, scene, exact plan, observed states, checks,
 review and saved report. It makes useful failures visible before a team spends
 more on physics or hardware experiments. A voice interface keeps the engineer
 focused on the scene; retrieved context and tools make the request actionable.
@@ -28,7 +28,7 @@ asks for natural voice, enterprise knowledge, meaningful tool/API actions,
 confirmation and follow-up, and permits workplace cases beyond its examples.
 The organizer decides eligibility/scoring; our internal checklist is not their rubric.
 
-| Stage | TeachTrace implementation | Boundary |
+| Stage | RoboTrace implementation | Boundary |
 | --- | --- | --- |
 | **Initiate** | Employee voice uses Agora Conversational AI/RTC, configured LLM and Murf Falcon output. | A real prerecorded mobile run completed five skills and captured remote audio. Human microphone/listener acceptance remains separate. |
 | **Understand** | Tools retrieve current world/object/destination state and applicable task guidance. Workcell assignments include locally authored SOPs and acceptance rules; approved custom scenes supply their declared task. | These are local sample/operator-reviewed records, not a claimed external enterprise connector or RAG deployment. |
@@ -98,7 +98,7 @@ geometry, track continuous worker motion or substitute for a data-collection rig
 ## Research and product context
 
 These primary sources informed the problem and boundaries. They are not customers,
-partners, evidence of a hackathon win, or proof that TeachTrace reproduces their systems.
+partners, evidence of a hackathon win, or proof that RoboTrace reproduces their systems.
 
 | Source | Relevant distinction |
 | --- | --- |
@@ -110,7 +110,7 @@ partners, evidence of a hackathon win, or proof that TeachTrace reproduces their
 Full context is in [PHYSICAL_AI_RESEARCH.md](PHYSICAL_AI_RESEARCH.md),
 [DATA_FLYWHEEL_STRATEGY.md](DATA_FLYWHEEL_STRATEGY.md),
 [HUMAN_DEMONSTRATION_BRIDGE.md](HUMAN_DEMONSTRATION_BRIDGE.md) and
-[DESIGN_REFERENCES.md](DESIGN_REFERENCES.md). TeachTrace uses its own implementation
+[DESIGN_REFERENCES.md](DESIGN_REFERENCES.md). RoboTrace uses its own implementation
 and branding.
 
 ## Readiness answer

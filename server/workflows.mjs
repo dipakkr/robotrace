@@ -126,7 +126,7 @@ export function createWorkflowStore({ dataDirectory, fs = fileSystem }) {
       const environmentId = episode.initialWorld?.environmentId;
       const sourceGuide = taskGuideForWorld(episode.initialWorld);
       const guide = directReview && CUSTOM_ID.test(sourceGuide.id) ? {
-        ...sourceGuide, source: 'TeachTrace operator-supplied scene SOP',
+        ...sourceGuide, source: 'RoboTrace operator-supplied scene SOP',
         sourceKind: sourceGuide.provenance?.source === 'ai-assisted-scene' ? 'unreviewed-ai-assisted-scene' : 'unreviewed-authored-scene',
         provenance: { ...sourceGuide.provenance, review: 'unreviewed' },
       } : sourceGuide;

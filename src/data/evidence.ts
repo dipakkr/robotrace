@@ -62,7 +62,7 @@ export interface EvidenceIntegrity {
 export interface EvidencePackage {
   schema: typeof SCHEMA;
   manifest: {
-    producer: { name: 'TeachTrace Workcell Studio'; version: '0.1.0' };
+    producer: { name: 'RoboTrace Workcell Studio'; version: '0.1.0' };
     controller: 'teachtrace-kinematic-v1';
     episodeSchema: typeof EPISODE_SCHEMA;
     simulationFidelity: typeof FIDELITY;
@@ -249,7 +249,7 @@ export function buildEvidencePackage(episode: EvidenceEpisode, persistedReport?:
   const checks = checksFor(source.initialWorld, final, source.samples);
   const payload: EvidencePackage = {
     schema: SCHEMA,
-    manifest: { producer: { name: 'TeachTrace Workcell Studio', version: '0.1.0' }, controller: 'teachtrace-kinematic-v1', episodeSchema: EPISODE_SCHEMA, simulationFidelity: snapshot(FIDELITY), createdAt: source.createdAt, sections: [...SECTIONS, 'derivedArmTrace'] },
+    manifest: { producer: { name: 'RoboTrace Workcell Studio', version: '0.1.0' }, controller: 'teachtrace-kinematic-v1', episodeSchema: EPISODE_SCHEMA, simulationFidelity: snapshot(FIDELITY), createdAt: source.createdAt, sections: [...SECTIONS, 'derivedArmTrace'] },
     scene: { environmentId: source.initialWorld.environmentId ?? null, coordinates: 'world-space meters', initialWorld: snapshot(source.initialWorld), finalWorld: snapshot(final) },
     task: taskFor(source.initialWorld), episode: { ...source, schema: EPISODE_SCHEMA },
     metrics: metricsFor(source, checks), checks, derivedArmTrace: createArmTrace(source.samples),
@@ -270,7 +270,7 @@ export function validateEvidencePackage(payload: unknown): EvidenceValidation {
     if (episode.schema !== EPISODE_SCHEMA) errors.push('The native episode must preserve schema teachtrace.episode.v1.');
     const final = episode.samples.at(-1)!.world;
     const checks = checksFor(episode.initialWorld, final, episode.samples);
-    const expectedManifest = { producer: { name: 'TeachTrace Workcell Studio', version: '0.1.0' }, controller: 'teachtrace-kinematic-v1', episodeSchema: EPISODE_SCHEMA, simulationFidelity: FIDELITY, createdAt: episode.createdAt, sections: payload.derivedArmTrace === undefined ? SECTIONS : [...SECTIONS, 'derivedArmTrace'] };
+    const expectedManifest = { producer: { name: 'RoboTrace Workcell Studio', version: '0.1.0' }, controller: 'teachtrace-kinematic-v1', episodeSchema: EPISODE_SCHEMA, simulationFidelity: FIDELITY, createdAt: episode.createdAt, sections: payload.derivedArmTrace === undefined ? SECTIONS : [...SECTIONS, 'derivedArmTrace'] };
     if (!same(payload.manifest, expectedManifest)) errors.push('Manifest producer/controller/fidelity/createdAt/sections do not match the native schema.');
     const expectedScene = { environmentId: episode.initialWorld.environmentId ?? null, coordinates: 'world-space meters', initialWorld: episode.initialWorld, finalWorld: final };
     if (payload.derivedArmTrace !== undefined && !same(payload.derivedArmTrace, createArmTrace(episode.samples))) errors.push('Derived arm telemetry must match the exact recorded kinematic states.');

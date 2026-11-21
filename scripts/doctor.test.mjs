@@ -64,7 +64,7 @@ test('health checks use only loopback GETs and never echo response payloads or e
     requested.push({ url, options });
     return url.endsWith('/status')
       ? new Response(JSON.stringify({ available: true, configured: false, secret: 'payload-private-sentinel' }))
-      : new Response('<title>TeachTrace</title>');
+      : new Response('<title>RoboTrace</title>');
   };
   const result = await checkLocalHealth({ FRONTEND_ORIGIN: 'https://untrusted.example', API_PORT: '8787' }, fetchImpl);
   assert.equal(result.every(item => item.reachable && item.recognized), true);

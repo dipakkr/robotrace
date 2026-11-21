@@ -1,4 +1,4 @@
-# TeachTrace atomic delivery backlog
+# RoboTrace atomic delivery backlog
 
 Updated **21 November 2026**. Existing task/gate IDs are retained; new bounded release work uses stable AB–AE IDs below. The ledger separates source implementation, narrow observed acceptance and open human/pilot/production gates. The earlier seven-hour arm-only schedule is historical.
 
