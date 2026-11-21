@@ -40,9 +40,9 @@ try {
   await command.pressSequentially('Take cup from counter to sink', { delay: 55 });
   await page.waitForTimeout(700); await command.press('Enter');
   await page.waitForFunction(() => document.querySelector('.mobile-phase')?.textContent?.includes('Navigate to Sink') && document.querySelector('.mobile-workspace > header .state-pill')?.textContent === 'running', null, { timeout: 45000 });
-  await page.getByRole('button', { name: 'Human enters', exact: true }).click();
+  await page.getByRole('button', { name: 'Block destination', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.mobile-workspace > header .state-pill')?.textContent === 'paused');
-  await chapter('1 / HUMAN INTERRUPTION · The robot pauses while carrying Cup. This is a software scenario proxy.');
+  await chapter('1 / DESTINATION BLOCKED · No route reaches the occupied Sink dock. The robot pauses while carrying Cup. This is a software scenario proxy.');
   await page.waitForTimeout(4000);
   await page.getByRole('button', { name: 'Clear human', exact: true }).click();
   await page.waitForTimeout(1200);

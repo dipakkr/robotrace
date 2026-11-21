@@ -7,8 +7,8 @@ import { createMobileEvidence } from '../data/mobile-evidence';
 import { solveMobileArm } from '../sim/mobile-arm';
 import { runMobileComparison } from '../sim/mobile-comparison';
 import type { MobileComparison } from '../sim/mobile-comparison';
-import { advanceMobileWorld, applyMobileControl, createMobileKitchen, mobileGoalChecks, mobileObjectReach, planMobileTask, setMobileHuman, startMobilePlan } from '../sim/mobile-navigation';
-import type { MobilePlan, MobileWorld } from '../sim/mobile-navigation';
+import { advanceMobileWorld, applyMobileControl, createMobileKitchen, mobileGoalChecks, mobileHumanAheadPosition, mobileObjectReach, mobileSegmentIsClear, planMobileTask, setMobileHuman, startMobilePlan } from '../sim/mobile-navigation';
+import type { MobilePlan, MobilePoint, MobileWorld } from '../sim/mobile-navigation';
 import type { VoiceCommandResult, VoiceStatus } from '../integrations/voice';
 import ActivityTerminal from './ActivityTerminal';
 import type { TerminalEntry } from './ActivityTerminal';
@@ -28,6 +28,7 @@ export default function MobileKitchen({ onBack, onBridge, voiceStatus, voiceErro
     { id: 'command-mode', time: 0, kind: 'system', text: 'Commands run immediately in the local simulator. Try “Take cup from counter to sink”. Saving is one click and does not assert human quality review.' },
   ]);
   const [top, setTop] = useState(false), [full, setFull] = useState(false), [speed, setSpeed] = useState(2);
+  const [placingHuman, setPlacingHuman] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<Record<string, unknown> | null>(null);
   const [comparison, setComparison] = useState<MobileComparison | null>(null);
   const [plannerOpen, setPlannerOpen] = useState(false), [libraryOpen, setLibraryOpen] = useState(false);
@@ -65,6 +66,15 @@ export default function MobileKitchen({ onBack, onBridge, voiceStatus, voiceErro
     }
   };
   const clearPendingSave = () => { generation.current++; saveRequest.current?.abort(); saveRequest.current = null; frozenSave.current = null; savedRecordRef.current = null; setSavedRecord(null); };
+  const placeHuman = (position: MobilePoint) => {
+    if (savingRef.current || replayRef.current || plannerRef.current || libraryRef.current) return;
+    if (!mobileSegmentIsClear({ ...ref.current, human: null, robot: { ...ref.current.robot, radius: .4 } }, position, position)) {
+      say('Choose an open floor point inside the map, clear of furniture.', 'warning'); return;
+    }
+    const occupied = setMobileHuman(ref.current, position); replace(occupied); if (initial.current) record(occupied, true);
+    say(`Person placed at ${position.map(value => value.toFixed(2)).join(', ')} m. The controller will seek a clear detour; an unreachable destination remains paused.`, 'context');
+    if (occupied.robot.mode === 'paused') say('Motion is paused. Resume explicitly after repositioning the person.', 'warning');
+  };
   const startPrepared = (): VoiceCommandResult => {
     const candidate = planRef.current;
     if (!candidate) return { completed: false, error: 'No executable mobile task is available.' };
@@ -88,14 +98,15 @@ export default function MobileKitchen({ onBack, onBridge, voiceStatus, voiceErro
     if (savingRef.current) return refuse('The exact recorded attempt is being saved. Wait for the save result before changing the live scene.');
     if (/^(approve|yes|approve and run|go ahead)[.!]*$/.test(normalized)) return { completed: receiptRef.current?.status === 'succeeded', executionReceipt: receiptRef.current ?? undefined, summary: 'Commands run immediately; no task awaits separate approval.' };
     if (/^(human enter|person enters|block route|human in workspace)$/.test(normalized)) {
-      const occupied = setMobileHuman(ref.current, [...ref.current.robot.position]); replace(occupied); if (initial.current) record(occupied, true);
-      say('Human obstruction scenario enabled. The software controller will hold before further movement.', 'context');
-      return { completed: true, summary: 'Software human-obstruction scenario enabled.' };
+      try { placeHuman(mobileHumanAheadPosition(ref.current)); }
+      catch (error) { return refuse(error instanceof Error ? error.message : 'No clear floor point is available for the person.'); }
+      return { completed: true, summary: 'A simulated person was placed ahead. The controller seeks a clear detour and pauses if none exists.' };
     }
     if (/^(human clear|clear human|clear route|human leaves)$/.test(normalized)) {
       const cleared = setMobileHuman(ref.current, null); replace(cleared); if (initial.current) record(cleared, true);
-      say('Obstruction cleared. The paused mission still needs Resume.', 'context');
-      return { completed: true, summary: 'Human scenario cleared; paused motion remains held.' };
+      const summary = cleared.robot.mode === 'paused' ? 'Obstruction cleared. The paused mission still needs Resume.' : 'Person cleared from the floor; the current task is unchanged.';
+      say(summary, 'context');
+      return { completed: true, summary };
     }
     const next = planMobileTask(text, ref.current);
     if (next.control) {
@@ -130,14 +141,14 @@ export default function MobileKitchen({ onBack, onBridge, voiceStatus, voiceErro
       const dt = Math.min(.05, (now - last) / 1000) * speed; last = now;
       if (ref.current.robot.mode === 'running') {
         const previous = ref.current.events.length, result = advanceMobileWorld(ref.current, dt); replace(result.world); record(result.world);
-        if (result.blocked) { say(result.blocked, 'warning'); setLastReceipt({ status: 'paused', verified: false, reason: result.blocked }); announceRef.current('Mobile motion paused for the human obstruction scenario.'); }
+        if (result.blocked) { setLastReceipt({ status: 'paused', verified: false, reason: result.blocked }); announceRef.current('The person blocks every clear route. Mobile motion is paused.'); }
         else if (result.error) { say(result.error, 'error'); setLastReceipt({ status: 'failed', verified: false, error: result.error }); announceRef.current(`Mobile attempt stopped: ${result.error}`); }
         else if (result.done) {
           const outcome = mobileCompletionOutcome(result.world); setLastReceipt(outcome.receipt); say(outcome.summary, outcome.verified ? 'success' : 'error');
           append(outcome.receipt.checks.map(check => ({ time: result.world.simTime, kind: 'check', text: `${check.passed ? 'PASS' : 'FAIL'} · ${check.name}` })));
           announceRef.current(outcome.announcement);
         } else if (result.world.events.length > previous) {
-          const event = result.world.events.at(-1); if (event && ['reach-check', 'pickup', 'place'].includes(event.kind)) announceRef.current(event.message);
+          const event = result.world.events.at(-1); if (event && (['reach-check', 'pickup', 'place'].includes(event.kind) || /rerouted around/i.test(event.message))) announceRef.current(event.message);
         }
       }
       frame = requestAnimationFrame(tick);
@@ -196,8 +207,8 @@ export default function MobileKitchen({ onBack, onBridge, voiceStatus, voiceErro
   const reach = mobileObjectReach(displayWorld, reachTarget.id), locked = saving || Boolean(storedReplay), active = ['running', 'paused'].includes(world.robot.mode);
 
   return <div className={`mobile-workspace${full ? ' mobile-full' : ''}`}>
-    <header><button className="button button-secondary" disabled={saving || active} onClick={onBack}><ArrowLeft size={13}/> Workcell</button><div><span className="eyebrow">TEACHTRACE · MOBILE MANIPULATION TEST</span><h1>Kitchen navigation lab</h1></div><span className="state-pill">{storedReplay ? 'Recorded replay' : world.robot.mode}</span><button className="button button-secondary" disabled={saving || active} onClick={() => setLibraryOpen(true)}>Saved recordings</button><button className="button button-secondary" disabled={locked || active} onClick={() => setPlannerOpen(true)}>AI deployment checks</button><button className="button button-secondary" onClick={() => setFull(!full)}>{full ? 'Show terminal' : 'Simulation only'}</button><button className="button button-danger" disabled={locked} onClick={() => void handler.current('stop')}><Square size={12}/>Stop</button></header>
-    <div className="mobile-body"><section className="mobile-viewport"><div className="mobile-scene-toolbar"><span>KNOWN FLOOR MAP · METERS</span><div><button className="view-button" onClick={() => setTop(false)}>Orbit</button><button className="view-button" onClick={() => setTop(true)}>Top</button></div></div><MobileKitchenScene world={displayWorld} top={top}/><div className="mobile-phase">{storedReplay ? 'RECORDED REPLAY · ' : ''}{displayWorld.robot.phase}</div>
+    <header><button className="button button-secondary" disabled={saving || active} onClick={onBack}><ArrowLeft size={13}/> Workcell</button><div><span className="eyebrow">TEACHTRACE · MOBILE MANIPULATION TEST</span><h1>Kitchen navigation lab</h1></div><span className="state-pill">{storedReplay ? 'Recorded replay' : world.robot.mode}</span><button className="button button-secondary" disabled={saving || active} onClick={() => setLibraryOpen(true)}>Saved recordings</button><button className="button button-secondary" aria-label="AI deployment checks" disabled={locked} onClick={() => setPlannerOpen(true)}>QA console</button><button className="button button-secondary" onClick={() => setFull(!full)}>{full ? 'Show terminal' : 'Simulation only'}</button><button className="button button-danger" disabled={locked} onClick={() => void handler.current('stop')}><Square size={12}/>Stop</button></header>
+    <div className="mobile-body"><section className="mobile-viewport"><div className="mobile-scene-toolbar"><span>KNOWN FLOOR MAP · METERS</span><div><button className="view-button" disabled={locked} aria-pressed={placingHuman} onClick={() => {setPlacingHuman(value => !value);setTop(true);}}>{placingHuman ? 'Done placing' : 'Place person'}</button><button className="view-button" onClick={() => setTop(false)}>Orbit</button><button className="view-button" onClick={() => setTop(true)}>Top</button></div></div><MobileKitchenScene world={displayWorld} top={top} onPlaceHuman={placingHuman && !locked ? placeHuman : undefined}/>{placingHuman && !locked && <div className="mobile-placement-hint">Click open floor to place or move the person. Click again to reposition.</div>}<div className="mobile-phase">{storedReplay ? 'RECORDED REPLAY · ' : ''}{displayWorld.robot.phase}</div>
       {storedReplay && <div className="mobile-saved-replay"><button className="button button-secondary" onClick={() => setStoredReplay(value => value ? { ...value, playing: !value.playing } : null)}>{storedReplay.playing ? 'Pause replay' : 'Play recording'}</button><input type="range" aria-label="Seek saved mobile recording" min={0} max={storedReplay.record.evidence.payload.trajectory.length - 1} value={storedReplay.frame} onChange={event => setStoredReplay(value => value ? { ...value, frame: Number(event.target.value), playing: false } : null)}/><button className="button button-primary" onClick={() => setStoredReplay(null)}>Return to live kitchen</button></div>}
       <div className="mobile-metrics"><span>Base travel <b>{displayWorld.distanceTravelled.toFixed(2)} m</b></span><span>Arm reach <b>{displayWorld.robot.armReach.toFixed(2)} m</b></span><span>Simulation <b>{displayWorld.simTime.toFixed(1)} s</b></span></div></section>
       <aside className="mobile-copilot"><ActivityTerminal entries={entries} title="Activity terminal" status={`${storedReplay ? 'replay' : world.robot.mode} · ${voiceStatus === 'live' ? 'Agora + Murf live' : 'local commands'}`}>
@@ -208,7 +219,7 @@ export default function MobileKitchen({ onBack, onBridge, voiceStatus, voiceErro
         {initial.current && !active && <details className="mobile-terminal-details"><summary>{checks.filter(check => check.passed).length}/{checks.length} current task checks</summary>{checks.map(check => <div className="outcome-check" key={check.id}><span>{check.name}</span><strong>{check.passed ? 'Passed' : 'Not passed'}</strong></div>)}</details>}
       </ActivityTerminal>
       <details className="mobile-terminal-tools"><summary>Telemetry & comparison</summary><div className="mobile-telemetry"><p>Base: {displayWorld.robot.position.map(value => value.toFixed(3)).join(', ')} m · yaw {displayWorld.robot.yaw.toFixed(3)} rad</p>{Object.entries(arm.jointAngles).map(([name, value]) => <p key={name}>{name}: {value.toFixed(3)} rad</p>)}<p>TCP: {arm.objectTCP.map(value => value.toFixed(3)).join(', ')} m · gripper {arm.gripperOpen === 0 ? 'closed' : 'open'}</p><p>{samples.current.length} recorded states · derived coordinates</p></div><button className="text-button" disabled={locked || active} onClick={compare}>Compare fixed vs mobile reach</button>{comparison && <><p>{comparison.results.map(result => `${result.label}: ${result.taskAccepted ? 'accepted' : result.outcome}`).join(' · ')}</p><button className="text-button" onClick={exportComparison}>Export reach comparison</button></>}</details>
-      <div className="mobile-actions"><button className="button button-secondary" disabled={locked || !active} onClick={() => void handler.current(world.robot.mode === 'paused' ? 'resume' : 'pause')}><Pause size={12}/>{world.robot.mode === 'paused' ? 'Resume' : 'Pause'}</button><button className="button button-secondary" disabled={locked} onClick={() => void handler.current(world.human ? 'human clear' : 'human enter')}>{world.human ? 'Clear human' : 'Human enters'}</button><button className="text-button" disabled={locked} onClick={() => void handler.current('reset')}>Reset</button><select aria-label="Mobile simulation speed" value={speed} disabled={locked} onChange={event => setSpeed(Number(event.target.value))}>{[1, 2, 3].map(value => <option key={value} value={value}>{value}×</option>)}</select></div>
+      <div className="mobile-actions"><button className="button button-secondary" disabled={locked || !active} onClick={() => void handler.current(world.robot.mode === 'paused' ? 'resume' : 'pause')}><Pause size={12}/>{world.robot.mode === 'paused' ? 'Resume' : 'Pause'}</button><button className="button button-secondary" disabled={locked} onClick={() => void handler.current(world.human ? 'human clear' : 'human enter')}>{world.human ? 'Clear human' : 'Human enters'}</button><button className="text-button" disabled={locked || !active} onClick={() => { const mission = ref.current.mission; const step = mission?.plan.steps.slice(mission.stepIndex).find(step => step.kind === 'navigate'); const station = ref.current.stations.find(station => station.id === step?.stationId); if (station) placeHuman([...station.dock]); }}>Block destination</button><button className="text-button" disabled={locked} onClick={() => void handler.current('reset')}>Reset</button><select aria-label="Mobile simulation speed" value={speed} disabled={locked} onChange={event => setSpeed(Number(event.target.value))}>{[1, 2, 3].map(value => <option key={value} value={value}>{value}×</option>)}</select></div>
       <form className="mobile-command" onSubmit={event => { event.preventDefault(); if (command.trim()) { void handler.current(command); setCommand(''); } }}><input disabled={locked} aria-label="Mobile robot command" placeholder="Take cup from counter to sink…" value={command} onChange={event => setCommand(event.target.value)}/><button disabled={locked} aria-label="Send mobile command"><Send size={15}/></button></form>
       <div className="mobile-voice"><button className="text-button" disabled={voiceStatus === 'connecting'} onClick={voiceStatus === 'live' || voiceStatus === 'connected' ? onDisconnect : onVoice}>{voiceStatus === 'connecting' ? <Loader2 size={12} className="spin"/> : <Mic size={12}/>} {voiceStatus === 'connecting' ? 'Connecting voice…' : voiceStatus === 'live' || voiceStatus === 'connected' ? 'End voice' : 'Connect voice'}</button>{(voiceStatus === 'error' || voiceStatus === 'connecting') && <button className="text-button" onClick={onResetVoice}><RotateCcw size={12}/> Reset voice</button>}<span role="status" aria-live="polite">{voiceStatus}</span>{voiceErrorMessage && <p role="alert">{voiceErrorMessage}</p>}</div></aside></div>
     <footer>Software evaluation · Known map · Idealized arm and attachment · No SLAM, contact dynamics or real-robot transfer validation.</footer>

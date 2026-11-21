@@ -7,6 +7,7 @@ import { buildAgentConfig, configuration } from './config.mjs';
 import { taskGuideForEnvironment, taskGuideForWorld } from './task-guides.mjs';
 import { agoraAuthorization } from './auth.mjs';
 import { createMobileEvidenceStore } from './mobile-store.mjs';
+import { createMobileQaStore, validateMobileQaMetadata, mobileQaSummary } from './mobile-qa-store.mjs';
 import { createWorkflowStore } from './workflows.mjs';
 import { createPlannerService } from './planner-models.mjs';
 import { generateMobileCandidate } from './mobile-planner.mjs';
@@ -39,6 +40,7 @@ function authorized(header, secret) {
 export function createApiServer({ env = process.env, fetchImpl = fetch, dataDirectory = resolve(HERE, '../.local/episodes'), voiceTimings = {} } = {}) {
   const workflows = createWorkflowStore({ dataDirectory });
   const mobileEvidence = createMobileEvidenceStore({ dataDirectory });
+  const mobileQa = createMobileQaStore({ dataDirectory });
   const planner = createPlannerService({ env, fetchImpl });
   const sessions = new Map();
   const pendingStops = new Set();
@@ -150,8 +152,23 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const input = await body(req);
         respond(res, 200, await generateMobileCandidate({ env, fetchImpl, model: input.model, world: input.world, command: input.command, goal: input.goal })); return;
       }
+      if (req.method === 'GET' && url.pathname === '/api/evaluations/mobile/history') {
+        respond(res, 200, await mobileQa.list()); return;
+      }
+      const mobileQaRoute = url.pathname.match(/^\/api\/evaluations\/mobile\/history\/([^/]+)$/);
+      if (req.method === 'GET' && mobileQaRoute) {
+        const record = await mobileQa.get(mobileQaRoute[1]);
+        respond(res, record ? 200 : 404, record ? { record } : { error: 'QA run not found.' }); return;
+      }
       if (req.method === 'POST' && url.pathname === '/api/evaluations/mobile') {
-        respond(res, 200, await evaluateMobilePlanOnServer(await body(req))); return;
+        const input = await body(req);
+        const qa = validateMobileQaMetadata(input?.qa);
+        const evaluationInput = { ...input }; delete evaluationInput.qa;
+        const result = await evaluateMobilePlanOnServer(evaluationInput);
+        let qaRecord;
+        try { const saved = await mobileQa.save(result, qa); const { checks, ...summary } = mobileQaSummary(saved); qaRecord = summary; }
+        catch { qaRecord = { id: result.id, historySaved: false, warning: 'Evaluation completed, but local QA history could not be saved. Export the current result to retain it.' }; }
+        respond(res, 200, { ...result, qaRecord }); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/evaluations/plan') {
         respond(res, 200, await evaluatePlanOnServer(await body(req))); return;

@@ -22,7 +22,7 @@ function fixture({ deep = false, stop = false, human = false } = {}) {
   let result = nav.startMobilePlan(initial, nav.planMobileTask('Take cup from counter to sink', initial));
   let world = result.world;
   const samples = [{ time: initial.simTime, world: structuredClone(initial) }];
-  if (human) { world = nav.setMobileHuman(world, [-3, 0]); samples.push({ time: world.simTime, world: structuredClone(world) }); }
+  if (human) { world = nav.setMobileHuman(world, [...initial.stations.find(station => station.id === 'counter').dock]); samples.push({ time: world.simTime, world: structuredClone(world) }); }
   for (let tick = 0; tick < 3000; tick++) {
     result = nav.advanceMobileWorld(world, 0.1); world = result.world;
     if (tick % 2 === 0 || result.done || result.blocked) samples.push({ time: world.simTime, world: structuredClone(world) });

@@ -15,7 +15,9 @@ below are dated historical evidence, not the current operator flow.
 
 | Current check | Observed result | Evidence |
 | --- | --- | --- |
-| Full suite and build | **313 tests pass** (181 simulation/data + 132 server/scripts); production build passes. Large Three/Agora bundle warning remains. | `.local/qa/latest-release-tests.log`, `latest-release-build.log` |
+| Full suite and build | **330 tests pass** (191 simulation/data + 139 server/scripts); production build passes. Large Three/Agora bundle warning remains. | `.local/qa/latest-dynamic-tests.log`, `latest-dynamic-build.log` |
+| Durable QA console | Four actual browser groups pass: six local evaluations persisted (3 accepted tasks, 3 guard outcomes, 6 exact expectation matches), reopen/history/detail, full filtered trace export, and 1440/1280/390 layouts. Zero model calls. | `qa-console-ui-results.json`, `qa-console-report.json` |
+| Dynamic person avoidance | Three actual UI groups pass: carrying Cup reroutes without stopping, occupied destination pauses, floor clicks reposition the person, clear alone does not resume, QA opening leaves live motion unchanged. Actual rerouted travel 10.57 m; no modeled circle overlap in recorded states. | `mobile-human-detour-results.json`, `mobile-human-detour-accepted-reroute.json` |
 | Workcell terminal | Four original immediate-flow groups and four final fresh-history groups pass. One header, green 10px monospace, yellow warnings/red errors, current-attempt evidence only, no stale pre-run progress. | `terminal-workcell-results.json`, `workcell-terminal-context-results.json` |
 | Natural follow-up | Actual counter→Sink task, exact “Move all cups from sink to drying rack”→both cups at Drying, preserved Bowl, fresh task ID and 5/5 new-goal checks. Unsupported Fork request rejects without stale completion. Three browser groups pass. | `workcell-cups-chain-results.json` |
 | Follow-up persistence | Actual controller chain then one real API save: accepted independently recomputed new Drying task, review false/operator-save. | `followup-save-results.json` |

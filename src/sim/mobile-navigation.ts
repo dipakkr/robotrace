@@ -93,19 +93,28 @@ export function mobileSegmentIsClear(world: MobileWorld, start: MobilePoint, end
     && !world.obstacles.some(obstacle => hitsRectangle(start, end, obstacle, world.robot.radius + 0.03));
 }
 
+/** Conservative base/human circle clearance; this is a software scenario, not tracking. */
+export function mobileSegmentAvoidsHuman(world: MobileWorld, start: MobilePoint, end: MobilePoint): boolean {
+  if (!world.human) return true;
+  const dx = end[0] - start[0], dz = end[1] - start[1], squared = dx * dx + dz * dz;
+  const t = squared ? Math.max(0, Math.min(1, ((world.human.position[0] - start[0]) * dx + (world.human.position[1] - start[1]) * dz) / squared)) : 0;
+  return distance(world.human.position, [start[0] + dx * t, start[1] + dz * t]) > world.robot.radius + world.human.radius + 0.05;
+}
+
 /** Bounded deterministic A* over the known map, followed by collision-checked path shortening. */
-export function findMobileRoute(world: MobileWorld, start: MobilePoint, goal: MobilePoint): MobilePoint[] | null {
-  if (!mobileSegmentIsClear(world, start, start) || !mobileSegmentIsClear(world, goal, goal)) return null;
-  if (mobileSegmentIsClear(world, start, goal)) return [[...start], [...goal]];
+export function findMobileRoute(world: MobileWorld, start: MobilePoint, goal: MobilePoint, options: { avoidHuman?: boolean } = {}): MobilePoint[] | null {
+  const clear = (a: MobilePoint, b: MobilePoint) => mobileSegmentIsClear(world, a, b) && (!options.avoidHuman || mobileSegmentAvoidsHuman(world, a, b));
+  if (!clear(start, start) || !clear(goal, goal)) return null;
+  if (clear(start, goal)) return [[...start], [...goal]];
   const { bounds, cellSize } = world;
   if (!Number.isFinite(cellSize) || cellSize < 0.25 || cellSize > 1) return null;
   const width = Math.floor((bounds.maxX - bounds.minX) / cellSize) + 1;
   const height = Math.floor((bounds.maxZ - bounds.minZ) / cellSize) + 1;
   if (width * height > 1600 || width < 1 || height < 1) return null;
   const points = Array.from({ length: width * height }, (_, id): MobilePoint => [bounds.minX + (id % width) * cellSize, bounds.minZ + Math.floor(id / width) * cellSize]);
-  const free = points.map(point => mobileSegmentIsClear(world, point, point));
+  const free = points.map(point => clear(point, point));
   const nearest = (point: MobilePoint) => points.map((candidate, id) => ({ id, d: distance(point, candidate) }))
-    .filter(({ id }) => free[id] && mobileSegmentIsClear(world, point, points[id])).sort((a, b) => a.d - b.d || a.id - b.id)[0]?.id;
+    .filter(({ id }) => free[id] && clear(point, points[id])).sort((a, b) => a.d - b.d || a.id - b.id)[0]?.id;
   const origin = nearest(start), target = nearest(goal);
   if (origin === undefined || target === undefined) return null;
   const open = new Set([origin]), closed = new Set<number>();
@@ -118,7 +127,7 @@ export function findMobileRoute(world: MobileWorld, start: MobilePoint, goal: Mo
     const x = current % width, z = Math.floor(current / width);
     const neighbors = [[x - 1, z], [x + 1, z], [x, z - 1], [x, z + 1]].filter(([nx, nz]) => nx >= 0 && nx < width && nz >= 0 && nz < height).map(([nx, nz]) => nz * width + nx);
     for (const next of neighbors) {
-      if (!free[next] || closed.has(next) || !mobileSegmentIsClear(world, points[current], points[next])) continue;
+      if (!free[next] || closed.has(next) || !clear(points[current], points[next])) continue;
       const cost = (costs.get(current) ?? Infinity) + cellSize;
       if (cost < (costs.get(next) ?? Infinity)) { costs.set(next, cost); parents.set(next, current); open.add(next); }
     }
@@ -130,7 +139,7 @@ export function findMobileRoute(world: MobileWorld, start: MobilePoint, goal: Mo
   let index = 0;
   while (index < raw.length - 1) {
     let next = raw.length - 1;
-    while (next > index + 1 && !mobileSegmentIsClear(world, raw[index], raw[next])) next--;
+    while (next > index + 1 && !clear(raw[index], raw[next])) next--;
     result.push([...raw[next]]); index = next;
   }
   return result;
@@ -201,12 +210,7 @@ export function startMobilePlan(source: MobileWorld, plan: MobilePlan, approvalS
 }
 
 function humanBlocks(world: MobileWorld, end: MobilePoint): boolean {
-  const human = world.human;
-  if (!human) return false;
-  const start = world.robot.position, dx = end[0] - start[0], dz = end[1] - start[1];
-  const squared = dx * dx + dz * dz;
-  const t = squared ? Math.max(0, Math.min(1, ((human.position[0] - start[0]) * dx + (human.position[1] - start[1]) * dz) / squared)) : 0;
-  return distance(human.position, [start[0] + dx * t, start[1] + dz * t]) <= world.robot.radius + human.radius + 0.05;
+  return !mobileSegmentAvoidsHuman(world, world.robot.position, end);
 }
 
 export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvanceResult {
@@ -229,10 +233,20 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
       let waypoint = step.path[mission.waypointIndex];
       if (!waypoint) { complete = true; }
       else {
-        if (!mobileSegmentIsClear(world, world.robot.position, waypoint)) {
-          const route = findMobileRoute(world, world.robot.position, station.dock);
-          if (!route) return fail('The floor route is blocked by a static obstacle. No movement was applied to that segment.');
+        if (!mobileSegmentIsClear(world, world.robot.position, waypoint) || humanBlocks(world, waypoint)) {
+          const route = findMobileRoute(world, world.robot.position, station.dock, { avoidHuman: true });
+          if (!route) {
+            if (world.human && findMobileRoute(world, world.robot.position, station.dock)) {
+              world.robot.mode = 'paused'; world.robot.phase = 'Human scenario leaves no clear route to the dock. Move or clear the person, then explicitly resume.';
+              event(world, 'blocked', world.robot.phase); return { world, done: false, blocked: world.robot.phase };
+            }
+            return fail('The floor route is blocked by a static obstacle. No movement was applied to that segment.');
+          }
+          const routeLength = (points: MobilePoint[]) => points.slice(1).reduce((sum, point, index) => sum + distance(points[index], point), 0);
+          const priorLength = routeLength([[...world.robot.position], ...step.path.slice(mission.waypointIndex)]);
+          if (world.human) event(world, 'control', `Rerouted around the human scenario: ${routeLength(route).toFixed(2)} m remaining route, ${Math.max(0, routeLength(route) - priorLength).toFixed(2)} m added.`);
           step.path = route; mission.waypointIndex = 1; waypoint = route[1];
+          if (!waypoint) { complete = true; continue; }
         }
         const length = distance(world.robot.position, waypoint);
         if (length <= EPSILON) { mission.waypointIndex++; continue; }
@@ -300,6 +314,41 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
     }
   }
   return { world, done: false };
+}
+
+/** Put a scenario proxy ahead, outside the current base clearance. */
+export function mobileHumanAheadPosition(world: MobileWorld): MobilePoint {
+  const active = world.mission?.plan.steps[world.mission.stepIndex];
+  const next = world.mission?.plan.steps.slice(world.mission.stepIndex).find(step => step.kind === 'navigate');
+  let route: MobilePoint[] | null = active?.kind === 'navigate' ? [[...world.robot.position], ...active.path.slice(world.mission!.waypointIndex)]
+    : next?.kind === 'navigate' ? findMobileRoute(world, world.robot.position, world.stations.find(station => station.id === next.stationId)!.dock) : null;
+  if (!route || route.length < 2) {
+    for (const station of world.stations.filter(station => station.id !== 'home')) {
+      route = findMobileRoute(world, world.robot.position, station.dock);
+      if (route && distance(world.robot.position, station.dock) > 1.1) break;
+    }
+  }
+  const allowed = (point: MobilePoint) => distance(point, world.robot.position) >= 1.1
+    && point[0] >= world.bounds.minX + .45 && point[0] <= world.bounds.maxX - .45 && point[1] >= world.bounds.minZ + .45 && point[1] <= world.bounds.maxZ - .45
+    && !world.obstacles.some(obstacle => hitsRectangle(point, point, obstacle, .43));
+  for (const ahead of [1.2, 1.5, 1.8, 2.2, 3]) {
+    let remaining = ahead;
+    for (let index = 1; route && index < route.length; index++) {
+      const length = distance(route[index - 1], route[index]);
+      if (length >= remaining && length > EPSILON) {
+        const point: MobilePoint = [route[index - 1][0] + (route[index][0] - route[index - 1][0]) * remaining / length, route[index - 1][1] + (route[index][1] - route[index - 1][1]) * remaining / length];
+        if (allowed(point)) return point; break;
+      }
+      remaining -= length;
+    }
+  }
+  for (const [dx, dz] of [[0, -1.2], [1.2, 0], [0, 1.2], [-1.2, 0]]) {
+    const point: MobilePoint = [world.robot.position[0] + dx, world.robot.position[1] + dz]; if (allowed(point)) return point;
+  }
+  for (let x = world.bounds.minX + .5; x <= world.bounds.maxX - .5; x += .5) for (let z = world.bounds.minZ + .5; z <= world.bounds.maxZ - .5; z += .5) {
+    const point: MobilePoint = [x, z]; if (allowed(point)) return point;
+  }
+  throw new Error('No open-floor person position exists outside the current base clearance.');
 }
 
 export function setMobileHuman(source: MobileWorld, position: MobilePoint | null): MobileWorld {

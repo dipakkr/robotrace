@@ -40,9 +40,11 @@ ignored `.local/`. A new callback tunnel updates only `PUBLIC_API_BASE_URL` in
    navigate to Sink, and place Cup. The compact green activity terminal records
    the actual context, plan, current action and results; yellow marks warnings
    and red marks failures. There are no task approval tabs or countdowns.
-3. Observe actual base travel and carried-object movement. **Human enters →
-   Clear human → Resume** tests a software obstruction; clearance alone does
-   not resume the mission. Completion requires actual docking and delivery checks.
+3. Observe actual base travel and carried-object movement. **Human enters** places
+   a person ahead; the robot takes a clear detour and keeps its cargo. Use
+   **Place person** and click the Top-view floor to reposition them.
+   **Block destination → Clear human → Resume** tests the genuinely blocked case.
+   Completion requires actual docking and delivery checks.
 4. Click **Save mobile evidence** once. The local API verifies integrity and
    recorded geometry/history, saves the native record and returns a report.
    Its review status stays **Unreviewed**; failed/stopped outcomes are preserved.
@@ -58,10 +60,10 @@ verified its seal and kinematics. See [validation](docs/VALIDATION.md) and the
 A saved report is local persistence, not an upload to a robotics lab. That
 recording uses the historical approval UI; the current interface executes
 immediately. The new [90-second simulation recording](.local/qa/simulation-video/teachtrace-simulation-walkthrough.mp4)
-shows immediate local commands, interruption, direct save, matched regression
+shows the prior immediate local controls and pause policy, direct save, matched regression
 and independent trace analysis. It uses typed commands, not a live voice session.
 
-Open **AI deployment checks → Run matched regression pair**. Both authored
+Open **QA console → Run matched regression pair**. Both authored
 plans deliver Cup to Sink; the Bowl round trip fails despite restoring its
 exact final state. **Download comparison**, open [Trace analysis](http://127.0.0.1:5189/trace-analysis.html)
 and load that export. The independent consumer plots the real displacement and
@@ -70,7 +72,7 @@ first recorded violation. Its downloaded HTML works offline. See the
 
 **Compare fixed vs mobile reach** holds the initial scene, target, reach and
 handling controller constant while removing navigation from the stationary
-condition. **AI deployment checks** executes declared human, bounded-baseline or
+condition. **QA console** executes declared human, bounded-baseline or
 LLM symbolic plans. It preserves wrong ordering and destinations: controller
 completion can still fail the task, including moving a protected Bowl and
 returning it to the exact original pose. This is controller/task evaluation,
@@ -78,6 +80,12 @@ not a learned motor-policy benchmark.
 
 **Go Home** is a navigation goal. It can retain loaded cargo and never counts
 parking as an object delivery or invents a placement.
+
+The **QA console** runs six frozen baseline conditions (three deliveries and
+three guard outcomes), separates task acceptance from expectation matches, and
+retains actual evaluation records across reloads. Its condition × candidate
+matrix leaves unrun cells empty. AI suites are explicit, bounded provider calls.
+See [the QA demo guide](docs/QA_DEMO.md).
 
 ## Workcell tasks, reference scenes and variations
 

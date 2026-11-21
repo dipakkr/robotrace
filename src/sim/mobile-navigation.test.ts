@@ -1,7 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { advanceMobileWorld, applyMobileControl, createMobileKitchen, findMobileRoute, mobileGoalChecks, mobileObjectReach, mobileSegmentIsClear, planMobileTask, setMobileHuman, startMobilePlan } from './mobile-navigation';
+import { advanceMobileWorld, applyMobileControl, createMobileKitchen, findMobileRoute, mobileGoalChecks, mobileHumanAheadPosition, mobileObjectReach, mobileSegmentAvoidsHuman, mobileSegmentIsClear, planMobileTask, setMobileHuman, startMobilePlan } from './mobile-navigation';
 import type { MobileWorld } from './mobile-navigation';
+
+test('a person ahead causes an actual longer detour while cargo and mission continue', () => {
+  let world = start('Bring cup to sink');
+  for (let tick=0;tick<1000&&world.robot.cargoObjectId!=='cup';tick++)world=advanceMobileWorld(world,.05).world;
+  const time=world.simTime, missionId=world.mission!.plan.id;
+  const point=mobileHumanAheadPosition(world);
+  assert.ok(Math.hypot(point[0]-world.robot.position[0],point[1]-world.robot.position[1])>=1.1);
+  world=setMobileHuman(world,point);
+  let sawReroute=false;
+  for(let tick=0;tick<5000;tick++){
+    const prior=world;const result=advanceMobileWorld(world,.05);world=result.world;
+    assert.equal(result.error,undefined);assert.equal(result.blocked,undefined);
+    assert.equal(world.mission!.plan.id,missionId);
+    assert.equal(mobileSegmentIsClear(world,prior.robot.position,world.robot.position),true);
+    assert.equal(mobileSegmentAvoidsHuman(world,prior.robot.position,world.robot.position),true);
+    if(world.robot.cargoObjectId){assert.equal(world.robot.cargoObjectId,'cup');const cup=world.objects[0];if(cup.status==='carried')assert.deepEqual(cup.position,world.robot.position);}
+    sawReroute ||= world.events.some(event=>/Rerouted around the human/.test(event.message));
+    if(result.done)break;
+  }
+  assert.ok(sawReroute);assert.ok(world.simTime>time);assert.ok(world.distanceTravelled>10);assert.ok(mobileGoalChecks(world).every(check=>check.passed));
+});
+
+test('moving the person again triggers another validated route', () => {
+  let world=start('Bring cup to sink');world=setMobileHuman(world,mobileHumanAheadPosition(world));
+  world=advanceMobileWorld(world,.1).world;
+  assert.equal(world.robot.mode,'running');
+  world=setMobileHuman(world,mobileHumanAheadPosition(world));
+  const result=advanceMobileWorld(world,.1);assert.equal(result.error,undefined);assert.equal(result.blocked,undefined);
+  assert.ok(result.world.events.filter(event=>/Rerouted around the human/.test(event.message)).length>=2);
+});
 
 function start(command: string, world = createMobileKitchen()): MobileWorld {
   const plan = planMobileTask(command, world);
@@ -13,9 +43,12 @@ function start(command: string, world = createMobileKitchen()): MobileWorld {
 function finish(source: MobileWorld): MobileWorld {
   let world = source;
   for (let tick = 0; tick < 5000; tick++) {
+    const previous = world;
     const result = advanceMobileWorld(world, 0.05);
     assert.equal(result.error, undefined); assert.equal(result.blocked, undefined);
     world = result.world;
+    assert.equal(mobileSegmentIsClear(world, previous.robot.position, world.robot.position), true);
+    assert.equal(mobileSegmentAvoidsHuman(world, previous.robot.position, world.robot.position), true, 'Every traversed segment must preserve the conservative person clearance');
     if (result.done) return world;
   }
   throw new Error('Mobile task exceeded its bounded test budget');
