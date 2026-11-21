@@ -42,6 +42,19 @@ export function directSpeechCommand(text: string, final: boolean): DirectSpeechC
   return { kind: 'navigation', command: `Go to ${station[0].toUpperCase()}${station.slice(1)}` };
 }
 
+/** Only obvious information requests and standalone acknowledgements. This is
+ * not a general intent classifier; free commands continue through the model. */
+export function nonMotionSpeechReason(text: string): string | null {
+  const value = normalize(text);
+  const acknowledgement = '(?:ok(?:ay)?|yes|yeah|yep|no|thanks|thank you|hello|hi|hey|good morning|good afternoon|good evening|नमस्ते|धन्यवाद|ठीक है|ठीक|अच्छा|हाँ|हां|जी|नहीं|समझ गया|shukriya|theek hai|thik hai|haan|han|namaste)';
+  if (new RegExp(`^${acknowledgement}(?: ${acknowledgement})*$`).test(value)) return 'The latest recognized speech is an acknowledgement or greeting, not a new motion request. No movement was executed; wait for an explicit task.';
+  if (/(?:\b(?:and|then)\b|और|फिर) (?:then |please )?(?:go|move|navigate|drive|pick|take|carry|place|put|जाओ|चलो|उठाओ)\b/.test(value)) return null;
+  const english = /^(?:please )?(?:how far\b|where\b|(?:what|tell me|show me)\b.*\b(?:distance|coordinates?|position|location)\b|(?:can|could|would) you (?:please )?(?:tell|show|check|report|give)\b.*\b(?:distance|coordinates?|position|location)\b|(?:distance|coordinates?|position|location)(?: to| of| from| please|$))/.test(value);
+  const hindi = /(?:कितन[ाीे]|कहां|कहाँ|दूरी|निर्देशांक|लोकेशन)/.test(value) && /(?:है|हैं|हो|बताओ|बताइए|क्या)$/.test(value);
+  const hinglish = /\b(?:kitna|kitni|kitne|kahan|kahaan)\b/.test(value) && /\b(?:hai|hain|ho|batao|bataye|bataiye)$/.test(value);
+  return english || hindi || hinglish ? 'The latest recognized speech asks for information, not movement. Retrieve context and answer it without executing a motion tool.' : null;
+}
+
 export interface SpeechControlObservation {
   turnId: string; command: string; kind: DirectSpeechCommand['kind']; receivedAt: number; invokedAt: number;
   /** Measured app dispatch time after the ASR event, not microphone/ASR latency. */
@@ -57,17 +70,19 @@ export class VoiceSpeechControlGate {
   private currentTranscript: VoiceTranscript | null = null;
   private guard: Guard | null = null;
   private handledThisTurn = false;
+  private noMotionReason: string | null = null;
   private toolForTurn: { intent: DirectSpeechCommand; receipt: Promise<VoiceCommandResult> } | null = null;
-  constructor(private dispatch: Dispatch, private observe?: (event: SpeechControlObservation) => void, private now: () => number = Date.now) {}
-  clear() { this.currentTurn = null; this.currentTranscript = null; this.guard = null; this.handledThisTurn = false; this.toolForTurn = null; }
+  constructor(private dispatch: Dispatch, private observe?: (event: SpeechControlObservation) => void, private now: () => number = Date.now, private getWorld?: () => unknown) {}
+  clear() { this.currentTurn = null; this.currentTranscript = null; this.guard = null; this.handledThisTurn = false; this.toolForTurn = null; this.noMotionReason = null; }
   receive(transcript: VoiceTranscript): SpeechControlObservation | null {
     if (transcript.speaker !== 'user' || !transcript.text.trim()) return null;
     this.currentTranscript = { ...transcript };
     if (this.currentTurn !== transcript.id) {
-      this.currentTurn = transcript.id; this.guard = null; this.handledThisTurn = false; this.toolForTurn = null;
+      this.currentTurn = transcript.id; this.guard = null; this.handledThisTurn = false; this.toolForTurn = null; this.noMotionReason = null;
     }
     const intent = directSpeechCommand(transcript.text, transcript.final);
-    if (!intent) return null;
+    if (!intent) { if (transcript.final) this.noMotionReason = nonMotionSpeechReason(transcript.text); return null; }
+    this.noMotionReason = null;
     // A newly recognized Stop must still override navigation if ASR reuses a turn.
     if (this.handledThisTurn && !(intent.kind === 'stop' && this.guard?.intent.kind !== 'stop')) return null;
     this.handledThisTurn = true;
@@ -87,11 +102,28 @@ export class VoiceSpeechControlGate {
     try { return Promise.resolve(this.dispatch(command, context)).then(receipt => receipt && typeof receipt.completed === 'boolean' ? receipt : failed('Invalid simulator receipt.'), failed); }
     catch (error) { return Promise.resolve(failed(error)); }
   }
+  private refreshReceipt(receipt: VoiceCommandResult, intent: DirectSpeechCommand): VoiceCommandResult {
+    if (!this.getWorld || intent.kind === 'stop') return receipt;
+    const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
+    const originalMission = object(object(receipt.world)?.mission), originalId = object(originalMission?.plan)?.id;
+    // A command without a native mission (including a refused request) cannot
+    // borrow verification from some previous successful mission.
+    if (typeof originalId !== 'string' || !originalId) return receipt;
+    let latest: unknown;
+    try { latest = this.getWorld(); } catch { return { ...receipt, completed: false, status: 'unconfirmed', summary: 'The original command was acknowledged, but its current simulator status could not be retrieved.', receiptFreshness: 'unavailable' }; }
+    const world = object(latest), mission = object(world?.mission), robot = object(world?.robot), execution = object(world?.executionReceipt);
+    if (object(mission?.plan)?.id !== originalId) return { ...receipt, completed: false, status: 'superseded', summary: 'The current simulator mission differs from this original command. Its old acknowledgement does not verify the current task.', receiptFreshness: 'different-mission' };
+    const checks = execution?.checks;
+    const completed = mission?.status === 'completed' && robot?.mode === 'idle' && execution?.status === 'succeeded' && execution.verified === true && Array.isArray(checks) && checks.length > 0 && checks.every(check => object(check)?.passed === true);
+    const status = completed ? 'succeeded' : robot?.mode === 'paused' ? 'paused' : robot?.mode === 'stopped' || mission?.status === 'stopped' ? 'cancelled' : mission?.status === 'completed' ? 'unverified' : String(execution?.status ?? mission?.status ?? 'unconfirmed');
+    return { ...receipt, completed, status, world: latest, executionReceipt: execution, receiptFreshness: 'same-native-mission', summary: completed ? 'The latest simulator snapshot verifies this same native mission completed and all recorded goal checks passed.' : `The latest simulator snapshot reports this same native mission as ${status}; no completed movement is asserted.` };
+  }
   async executeTool(command: string, commandId?: string): Promise<VoiceCommandResult> {
+    if (this.noMotionReason && !/^(?:stop|pause)[.!]*$/i.test(command.trim())) return { completed: false, status: 'rejected', error: this.noMotionReason };
     const intent = directSpeechCommand(command, true), guard = this.guard;
     if (guard) {
       if (intent?.command === guard.intent.command) {
-        const receipt = await guard.receipt;
+        const receipt = this.refreshReceipt(await guard.receipt, guard.intent);
         return { ...receipt, speechControlDeduplicated: true, summary: `${receipt.summary ?? 'The recognized speech command already reached the simulator.'} This matching tool request did not execute it again.` };
       }
       // Stop can always make the simulator more conservative, even after navigation.
@@ -99,7 +131,7 @@ export class VoiceSpeechControlGate {
         ? 'The latest recognized speech requested Stop. No later movement from this turn was executed. Speak a new task to proceed.'
         : `The latest recognized speech requested ${guard.intent.kind === 'navigation' ? 'navigation only' : 'only this relative motion'}: ${guard.intent.command}. This tool request adds or changes an action, so it was not executed.` };
     }
-    if (intent && this.toolForTurn?.intent.command === intent.command) return { ...await this.toolForTurn.receipt, speechControlDeduplicated: true };
+    if (intent && this.toolForTurn?.intent.command === intent.command) return { ...this.refreshReceipt(await this.toolForTurn.receipt, intent), speechControlDeduplicated: true };
     const caption = this.currentTranscript;
     const receipt = this.invoke(command, { source: 'voice-tool', ...(commandId ? { commandId } : {}), ...(caption ? { userTurnId: caption.id, recognizedText: caption.text, receivedAt: caption.receivedAt, turnAssociation: 'latest-observed-user-turn' as const } : {}) });
     if (intent) this.toolForTurn = { intent, receipt };

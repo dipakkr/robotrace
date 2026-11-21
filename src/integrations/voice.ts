@@ -121,7 +121,7 @@ export async function startVoiceSession(
     const reason = pauseGate.blockReason(command);
     return reason ? { completed: false, status: 'paused', error: reason } : onCommand(command, context);
   };
-  const speechControls = new VoiceSpeechControlGate(dispatchCommand, event => { speechControlDiagnostics.push(event); speechControlDiagnostics = speechControlDiagnostics.slice(-100); options.onSpeechControl?.(event); });
+  const speechControls = new VoiceSpeechControlGate(dispatchCommand, event => { speechControlDiagnostics.push(event); speechControlDiagnostics = speechControlDiagnostics.slice(-100); options.onSpeechControl?.(event); }, undefined, options.getWorld);
   const setPaused = (paused: boolean) => {
     requestedVoicePause = paused;
     const changed = pauseGate.paused !== paused;

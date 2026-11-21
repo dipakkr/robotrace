@@ -62,3 +62,9 @@ Local evidence files are development artifacts and may not be included in the pu
 ## Actual before/after system regression
 
 Two recorded provider sessions independently verify the same full initial simulator state (SHA-256 `17c21266b0aec19376a39c909bb4269a5be387f8f3f1ab4874eb2234279c7a10`) and identical final ASR: “Please move forward one meter.” Before the strict final-caption dispatcher/prompt corrections, the system executed `Go Home`: actual path/net movement **0 m**, request failed. Afterwards it executed `Move forward 1 meter`: actual path/net movement **1 m**, request passed. The earlier association is temporal-only; the corrected recording supplies an explicit turn ID. This is one reproduced system regression and correction, not model-weight training, isolated causal attribution or physical-transfer improvement. The original sealed recordings remain unchanged. Local evidence: [actual-before-after.json](../.local/qa/voice-experiment-live-corrected-attempt2/actual-before-after.json).
+
+## Final conversation and multilingual checks
+
+Obvious final information questions and standalone acknowledgements cannot authorize new model motion. Matching late tool calls refresh the same native mission’s current checked state rather than replaying a stale initiation receipt; a different mission, pause, cancellation or failed checks cannot borrow success. Exact positive Hindi/Hinglish relative-distance requests have independent evaluator revision3 coverage; ambiguous speech, negation and questions are not translated into invented goals. Historical sealed grades remain unchanged.
+
+The report displays a recorded refusal reason only when the speech turn, command request and request-failed event have an exact ID chain. It does not invent that association from nearby timestamps.

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="920" viewBox="0 0 1560 920" role="img" aria-labelledby="title description">
+<title id="title">RoboTrace architecture</title><desc id="description">Voice conversation through Agora and Murf, authenticated action tools, a checked local robot controller, photo-informed scene authoring, and session recording through independent QA export.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="#a6b8a1" stroke-width="1.4"/></marker></defs>
+<rect width="1560" height="920" fill="#101210"/>
+<text x="40" y="48" fill="#9eaa98" font-family="monospace" font-size="13" letter-spacing="3">ROBOTRACE · SYSTEM ARCHITECTURE</text>
+<text x="40" y="92" fill="#edf0e9" font-family="Arial,sans-serif" font-size="32">Voice to action. Evidence to evaluation.</text>
+<path d="M300 200H332" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M600 200H632" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M900 200H932" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M1200 200H1232" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M770 250V322" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<text x="782" y="288" fill="#9aab95" font-family="Arial,sans-serif" font-size="12">reply</text>
+<path d="M640 380H625V285H590V258" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<text x="555" y="275" fill="#9aab95" font-family="Arial,sans-serif" font-size="12">returned speech</text>
+<path d="M470 250V322" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<text x="482" y="287" fill="#9aab95" font-family="Arial,sans-serif" font-size="12">captions</text>
+<path d="M608 380V455H1220V275H1370V258" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<text x="850" y="444" fill="#9aab95" font-family="Arial,sans-serif" font-size="12">strict fast path</text>
+<path d="M1370 250V322" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M300 560H332" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M600 560H1390V438" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<text x="800" y="549" fill="#9aab95" font-family="Arial,sans-serif" font-size="12">estimated scene</text>
+<path d="M1508 200H1530V740H1508" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<text x="1370" y="627" fill="#9aab95" font-family="Arial,sans-serif" font-size="12">record actual state</text>
+<path d="M1240 740H1208" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M940 740H908" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M640 740H608" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M340 740H308" fill="none" stroke="#a6b8a1" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M608 405V475H1200V640H1310V682" fill="none" stroke="#758071" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#arrow)"/><text x="720" y="492" fill="#8e9989" font-family="Arial,sans-serif" font-size="12">recognized speech + captured RTC audio</text>
+<rect x="40" y="150" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="57" y="180" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Operator</text>
+<text x="57" y="206" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">English / Hindi / Hinglish</text>
+<text x="57" y="226" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Voice + room photo</text>
+<rect x="340" y="150" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="357" y="180" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Agora RTC + Conversational AI</text>
+<text x="357" y="206" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Streaming voice and captions</text>
+<text x="357" y="226" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Managed Deepgram ASR</text>
+<rect x="640" y="150" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="657" y="180" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Configured LLM</text>
+<text x="657" y="206" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Fresh scene + local SOPs</text>
+<text x="657" y="226" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Choose supported actions</text>
+<rect x="940" y="150" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="957" y="180" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Authenticated tool bridge</text>
+<text x="957" y="206" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">HTTPS callback → Node.js</text>
+<text x="957" y="226" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">SSE commands / acknowledgements</text>
+<rect x="1240" y="150" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="1257" y="180" fill="#e7aa79" font-family="Arial,sans-serif" font-size="17" font-weight="600">Robot controller</text>
+<text x="1257" y="206" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Route, reach, hold and place</text>
+<text x="1257" y="226" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Check actual simulated outcomes</text>
+<rect x="640" y="330" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="657" y="360" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Murf Falcon TTS</text>
+<text x="657" y="386" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Assistant speech via Agora</text>
+<text x="657" y="406" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Configured English voice</text>
+<rect x="340" y="330" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="357" y="360" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Caption control guards</text>
+<text x="357" y="386" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Immediate Stop / literal motion</text>
+<text x="357" y="406" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Pause and duplicate protection</text>
+<rect x="1240" y="330" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="1257" y="360" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">React + Three.js</text>
+<text x="1257" y="386" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Kitchen / photo-informed hall</text>
+<text x="1257" y="406" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Live activity and coordinates</text>
+<rect x="40" y="510" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="57" y="540" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Photo upload / capture</text>
+<text x="57" y="566" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Explicit vision request</text>
+<text x="57" y="586" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">No source pixels in world export</text>
+<rect x="340" y="510" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="357" y="540" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Validated room draft</text>
+<text x="357" y="566" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Estimated furniture footprints</text>
+<text x="357" y="586" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Operator reviews and applies</text>
+<rect x="1240" y="690" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="1257" y="720" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Session recorder</text>
+<text x="1257" y="746" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Speech, commands and states</text>
+<text x="1257" y="766" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Separate user / assistant audio</text>
+<rect x="940" y="690" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="957" y="720" fill="#e7aa79" font-family="Arial,sans-serif" font-size="17" font-weight="600">Private store + evaluator</text>
+<text x="957" y="746" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Stop → explicit Save</text>
+<text x="957" y="766" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Requested versus observed</text>
+<rect x="640" y="690" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="657" y="720" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">QA report</text>
+<text x="657" y="746" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Trajectory plots and replay</text>
+<text x="657" y="766" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Results, confidence and audio</text>
+<rect x="340" y="690" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="357" y="720" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Portable export</text>
+<text x="357" y="746" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Typed JSONL + audio files</text>
+<text x="357" y="766" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Timestamps, units and digests</text>
+<rect x="40" y="690" width="268" height="100" rx="12" fill="#1c211b" stroke="#3c4639"/>
+<text x="57" y="720" fill="#d5e0cf" font-family="Arial,sans-serif" font-size="17" font-weight="600">Independent analysis</text>
+<text x="57" y="746" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Read the exported evidence</text>
+<text x="57" y="766" fill="#9fac99" font-family="Arial,sans-serif" font-size="13">Locate and explain failures</text>
+<text x="40" y="840" fill="#a6b19f" font-family="Arial,sans-serif" font-size="14">LLM selects high-level actions · controller executes known-map motion · evaluator checks recorded outcomes</text>
+<text x="40" y="873" fill="#7e8878" font-family="Arial,sans-serif" font-size="13">Bounded kinematic prototype. No calibrated scan, contact physics, learned motor policy or validated real-robot transfer.</text>
+</svg>

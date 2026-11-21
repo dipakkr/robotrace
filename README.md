@@ -87,6 +87,10 @@ Advanced planner comparisons remain under **Planner benchmarks**. The matched pr
 
 ## Architecture and track fit
 
+See the [full architecture diagram and component responsibilities](docs/ARCHITECTURE.md).
+
+![RoboTrace system architecture](docs/media/robotrace-architecture.svg)
+
 ```mermaid
 flowchart LR
     Operator[Robotics QA operator] --> Voice[Agora RTC and Conversational AI]

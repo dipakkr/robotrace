@@ -138,3 +138,51 @@ test('actual recorded failed wording now drives one-meter native motion, rejects
   assert.equal((await gate.executeTool('Go Home')).status,'rejected');assert.deepEqual(calls,['Move forward 1 meter','Move straight 6 meters']);
   gate.receive(transcript('later-legitimate','Pick up cup'));await gate.executeTool('Pick up cup');assert.equal(calls.at(-1),'Pick up cup');
 });
+
+
+test('obvious final questions and standalone acknowledgements cannot authorize later model motion', async () => {
+  for (const text of ['How far is the sink?', 'What is the robot position?', 'Can you please tell me the distance to the table?', 'Coordinates please', 'सिंक कितनी दूर है?', 'रोबोट की लोकेशन बताओ।', 'sink kitna door hai?', 'robot kahan hai?', 'Okay', 'Okay. Okay.', 'Yes', 'Thank you', 'ठीक है।', 'Hello']) {
+    const calls: string[] = []; const gate = new VoiceSpeechControlGate(command=>{calls.push(command);return {completed:true};});
+    gate.receive(transcript('question',text));
+    for(const command of ['Go Home','Take cup from counter to sink','resume']) assert.equal((await gate.executeTool(command)).status,'rejected',text);
+    assert.deepEqual(calls,[],text);
+    await gate.executeTool('stop');assert.deepEqual(calls,['stop'],text);
+    gate.receive(transcript('new-explicit-action','Can you go to table?'));
+    assert.deepEqual(calls,['stop','Go to Table'],text);
+  }
+});
+
+test('partial questions do not invent intent; compound free commands and polite action questions remain available', async () => {
+  const calls:string[]=[];const gate=new VoiceSpeechControlGate(command=>{calls.push(command);return {completed:true};});
+  gate.receive(transcript('partial','How far',false));await gate.executeTool('Go Home');assert.deepEqual(calls,['Go Home']);
+  gate.receive(transcript('final','How far is sink?',true));assert.equal((await gate.executeTool('Go Home')).status,'rejected');
+  gate.receive(transcript('free','Go to table and relax'));await gate.executeTool('Go to Table');assert.equal(calls.at(-1),'Go to Table');
+  gate.receive(transcript('question-and-action','Tell me the distance and then go to Sink'));await gate.executeTool('Go to Sink');assert.equal(calls.at(-1),'Go to Sink');
+  gate.receive(transcript('compound','Okay, pick up cup'));await gate.executeTool('Pick up cup');assert.equal(calls.at(-1),'Pick up cup');
+  gate.receive(transcript('courtesy','Could you please go to sink?'));assert.equal(calls.at(-1),'Go to Sink');
+});
+
+
+test('deduplicated speech tools return fresh verified state only for the identical native mission ID', async () => {
+  const initial={mission:{plan:{id:'native-1'},status:'running'},robot:{mode:'running'}};
+  let current:unknown={...initial,executionReceipt:{status:'running',verified:false}};let calls=0;
+  const gate=new VoiceSpeechControlGate(()=>{calls++;return {completed:false,status:'running',summary:'Started, not yet verified.',world:initial};},undefined,Date.now,()=>current);
+  gate.receive(transcript('nav-current','Move forward one meter'));
+  current={mission:{plan:{id:'native-1'},status:'completed'},robot:{mode:'idle'},executionReceipt:{status:'succeeded',verified:true,checks:[{passed:true},{passed:true}]}};
+  const actual=await gate.executeTool('Move forward 1 meter');assert.equal(actual.completed,true);assert.equal(actual.status,'succeeded');assert.equal(actual.receiptFreshness,'same-native-mission');assert.match(actual.summary!,/latest simulator snapshot verifies/i);assert.equal(calls,1);
+  current={mission:{plan:{id:'different-2'},status:'completed'},robot:{mode:'idle'},executionReceipt:{status:'succeeded',verified:true,checks:[{passed:true}]}};
+  const unrelated=await gate.executeTool('Move forward 1 meter');assert.equal(unrelated.completed,false);assert.equal(unrelated.status,'superseded');assert.equal(calls,1);
+});
+
+test('same-mission pause, stop, failed checks and empty checks never reuse old success', async () => {
+  let current:unknown;const initial={mission:{plan:{id:'native-1'},status:'running'},robot:{mode:'running'}};
+  const gate=new VoiceSpeechControlGate(()=>({completed:false,status:'running',world:initial}),undefined,Date.now,()=>current);gate.receive(transcript('nav','Go to sink'));
+  for(const [mode,status,checks,wanted] of [['paused','running',[{passed:true}],'paused'],['stopped','stopped',[{passed:true}],'cancelled'],['idle','completed',[{passed:false}],'unverified'],['idle','completed',[],'unverified']] as const){current={mission:{plan:{id:'native-1'},status},robot:{mode},executionReceipt:{status:'succeeded',verified:true,checks}};const value=await gate.executeTool('Go to sink');assert.equal(value.completed,false);assert.equal(value.status,wanted);}
+});
+
+test('refused commands and Stop controls cannot inherit completion from another mission', async () => {
+  const successful={mission:{plan:{id:'previous'},status:'completed'},robot:{mode:'idle'},executionReceipt:{status:'succeeded',verified:true,checks:[{passed:true}]}};
+  const gate=new VoiceSpeechControlGate(command=>command==='stop'?{completed:true,summary:'Control stop applied.'}:{completed:false,error:'Relative movement must be between 0.05 and 5 meters.'},undefined,Date.now,()=>successful);
+  gate.receive(transcript('refused','Go straight six meters'));const refused=await gate.executeTool('Go straight 6 meters');assert.equal(refused.completed,false);assert.match(refused.error!,/0.05/);assert.equal(refused.receiptFreshness,undefined);
+  gate.receive(transcript('stop','Stop'));const stop=await gate.executeTool('stop');assert.equal(stop.completed,true);assert.equal(stop.summary?.startsWith('Control stop applied.'),true);
+});
