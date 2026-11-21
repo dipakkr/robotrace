@@ -1,6 +1,7 @@
 import {useEffect,useMemo} from 'react';
 import {BoxGeometry,BufferGeometry,CylinderGeometry,Euler,Matrix4,Quaternion,SphereGeometry,TorusGeometry,Vector3} from 'three';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import {KITCHEN_VISIBLE_FIXTURES as fixtures} from '../sim/kitchen-inventory';
 import type {MobileWorld} from '../sim/mobile-navigation';
 
 type XYZ=[number,number,number];
@@ -64,7 +65,7 @@ function buildDetails(world:MobileWorld){
  const counter=world.stations.find(item=>item.id==='counter');
  if(counter){const x=counter.surface[0],y=counter.height;
   // Steel kettle at the far left; both manipulation lanes remain empty.
-  const kettleX=x-.69,kettleZ=counter.surface[1]-.02;
+  const kettleX=x+fixtures.kettleOffsetX,kettleZ=counter.surface[1]+fixtures.kettleOffsetZ;
   cylinder('dark',.14,.15,.035,[kettleX,y+.025,kettleZ]);
   cylinder('steel',.115,.145,.235,[kettleX,y+.158,kettleZ]);
   cylinder('steel',.125,.125,.025,[kettleX,y+.288,kettleZ]);
@@ -72,11 +73,11 @@ function buildDetails(world:MobileWorld){
   ring('dark',.118,.022,[kettleX-.13,y+.17,kettleZ],[0,Math.PI/2,0],Math.PI);
   cylinder('steel',.027,.047,.15,[kettleX+.145,y+.20,kettleZ],[0,0,-Math.PI/3]);
   // A rear spice shelf with small capped steel canisters and warm spice bands.
-  const shelfZ=counter.surface[1]-.42;
+  const shelfZ=counter.surface[1]+fixtures.spiceShelfOffsetZ;
   box('wood',[.99,.045,.23],[x+.26,y+.055,shelfZ]);
   box('wood',[.99,.025,.03],[x+.26,y+.19,shelfZ+.105]);
-  for(let index=0;index<4;index++){
-   const jarX=x-.08+index*.22;
+  for(let index=0;index<fixtures.spiceJarCount;index++){
+   const jarX=x+fixtures.spiceJarStartX+index*fixtures.spiceJarSpacing;
    cylinder('spice',.065,.065,.16,[jarX,y+.16,shelfZ]);
    cylinder('steel',.069,.069,.032,[jarX,y+.252,shelfZ]);
    box('ceramic',[.06,.047,.009],[jarX,y+.16,shelfZ+.063]);
@@ -85,7 +86,7 @@ function buildDetails(world:MobileWorld){
   const railZ=back+.085;
   cylinder('steel',.013,.013,1.35,[x,1.60,railZ],[0,0,Math.PI/2]);
   for(const side of[-1,1])cylinder('dark',.022,.022,.08,[x+side*.64,1.60,railZ-.035],[Math.PI/2,0,0]);
-  for(let index=0;index<3;index++){
+  for(let index=0;index<fixtures.wallUtensilCount;index++){
    const utensilX=x-.32+index*.31;
    ring('steel',.025,.006,[utensilX,1.56,railZ]);
    cylinder('steel',.008,.008,.21,[utensilX,1.43,railZ]);
@@ -95,28 +96,28 @@ function buildDetails(world:MobileWorld){
  }
 
  const sink=world.stations.find(item=>item.id==='sink');
- if(sink){const x=sink.surface[0]+.67,z=sink.surface[1]-.035,y=sink.height;
+ if(sink){const x=sink.surface[0]+fixtures.drainerOffsetX,z=sink.surface[1]+fixtures.drainerOffsetZ,y=sink.height;
   // Side drainer and upright plates; the sink placement center stays unobstructed.
   box('dark',[.48,.025,.49],[x,y+.032,z]);
   for(const side of[-1,1]){
    cylinder('steel',.009,.009,.47,[x,y+.12,z+side*.225],[0,0,Math.PI/2]);
    cylinder('steel',.009,.009,.45,[x+side*.23,y+.12,z],[Math.PI/2,0,0]);
   }
-  for(let index=0;index<5;index++){
+  for(let index=0;index<fixtures.plateCount;index++){
    const plateX=x-.17+index*.085;
    ring('ceramic',.153,.018,[plateX,y+.205,z],[0,Math.PI/2,0]);
    cylinder('ceramic',.145,.145,.012,[plateX,y+.205,z],[0,0,Math.PI/2]);
    cylinder('steel',.007,.007,.43,[plateX,y+.07,z],[Math.PI/2,0,0]);
   }
   // Rear steel tumbler stays away from the delivery/arm handoff region.
-  cylinder('steel',.055,.045,.13,[sink.surface[0]-.72,y+.075,sink.surface[1]-.31]);
+  cylinder('steel',.055,.045,.13,[sink.surface[0]+fixtures.tumblerOffsetX,y+.075,sink.surface[1]+fixtures.tumblerOffsetZ]);
  }
 
  // Window sill, upper blinds and one potted herb; all wall fixtures above 1.45m.
  box('wood',[2.18,.065,.30],[0,1.49,back+.13]);
- for(let index=0;index<5;index++)box('wood',[1.94,.064,.037],[0,2.43-index*.074,back+.112],[-.19,0,0]);
+ for(let index=0;index<fixtures.plateCount;index++)box('wood',[1.94,.064,.037],[0,2.43-index*.074,back+.112],[-.19,0,0]);
  for(const side of[-1,1])box('ceramic',[.012,.39,.012],[side*.67,2.25,back+.14]);
- const plantX=.73,plantZ=back+.15;
+ const plantX=fixtures.herbX,plantZ=back+.15;
  cylinder('terracotta',.125,.09,.19,[plantX,1.62,plantZ]);
  cylinder('dark',.106,.106,.008,[plantX,1.718,plantZ]);
  for(let index=0;index<7;index++){

@@ -37,7 +37,9 @@ export interface VoiceOptions {
   recordAudio?: boolean;
   onAudioSegment?: (segment: VoiceAudioSegment) => void | Promise<void>;
   onRecordingStatus?: (status: VoiceRecordingStatus) => void;
+  onAudioActivity?: (activity: VoiceAudioActivity) => void;
 }
+export interface VoiceAudioActivity { inputLevel: number; outputLevel: number; at: number; inputAvailable: boolean; outputAvailable: boolean }
 export interface VoiceConnection {
   sessionId: string;
   stop: () => Promise<void>;
@@ -107,12 +109,22 @@ export async function startVoiceSession(
   let sessionId = '';
   let events: EventSource | undefined;
   let snapshotTimer: ReturnType<typeof setInterval> | undefined;
+  let audioActivityTimer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
   let agentAudioConnected = false;
   const captions = new AgoraCaptionDecoder();
   const pauseGate = new VoicePauseCommandGate();
   pauseGate.setPaused(requestedVoicePause);
   const remoteAudio = new Set<import('agora-rtc-sdk-ng').IRemoteAudioTrack>();
+  const reportAudioActivity = (closing = false) => {
+    if (!options.onAudioActivity) return;
+    const level = (track: { getVolumeLevel: () => number }) => { try { const value = track.getVolumeLevel(); return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0; } catch { return 0; } };
+    const available = (track: { getMediaStreamTrack: () => MediaStreamTrack }) => { try { return track.getMediaStreamTrack().readyState === 'live'; } catch { return false; } };
+    const inputAvailable = !closing && Boolean(microphone && available(microphone));
+    const outputs = closing ? [] : [...remoteAudio].filter(available);
+    const activity = { inputLevel: inputAvailable && microphone && !pauseGate.paused ? level(microphone) : 0, outputLevel: !pauseGate.paused ? Math.max(0, ...outputs.map(level)) : 0, at: Date.now(), inputAvailable, outputAvailable: outputs.length > 0 };
+    try { options.onAudioActivity(activity); } catch { /* A visual telemetry subscriber must not interrupt owned audio cleanup. */ }
+  };
   const audioRecorder = options.recordAudio && options.onAudioSegment ? new VoiceAudioRecorder({ onSegment: options.onAudioSegment, onStatus: options.onRecordingStatus }) : null;
   if (options.recordAudio && !options.onAudioSegment) options.onRecordingStatus?.({ supported: typeof MediaRecorder !== 'undefined', state: 'error', error: 'Audio recording needs an experiment segment receiver.' });
   const remoteVolume = (volume: number) => { for (const track of remoteAudio) { try { track.setVolume(volume); } catch { remoteAudio.delete(track); } } };
@@ -152,6 +164,7 @@ export async function startVoiceSession(
     pauseGate.clear(); remoteAudio.clear();
     if (pendingPause === setPaused) pendingPause = null;
     clearInterval(snapshotTimer);
+    clearInterval(audioActivityTimer); reportAudioActivity(true);
     // Stop recorders synchronously, then release SDK tracks. Wait for their final
     // data events and receiver callbacks before announcing a disconnected session.
     const recordingFlush = audioRecorder?.stop();
@@ -207,6 +220,7 @@ export async function startVoiceSession(
   try {
     const { default: AgoraRTC } = await import('agora-rtc-sdk-ng');
     microphone = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+    if (options.onAudioActivity) { reportAudioActivity(); audioActivityTimer = setInterval(() => { if (!stopped && generation === voiceGeneration) reportAudioActivity(); }, 150); }
     audioRecorder?.addTrack('user', microphone.getMediaStreamTrack());
     if (pauseGate.paused) await microphone.setMuted(true);
     if (stopped || generation !== voiceGeneration) throw new Error('Voice connection cancelled.');

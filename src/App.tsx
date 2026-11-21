@@ -16,7 +16,7 @@ import { draftSceneFromText } from './sim/scene-authoring';
 import { worldForCommand } from './sim/command-task';
 import type { EvidenceEpisode } from './data/evidence';
 import type { EvaluationCampaign } from './sim/evaluation';
-import type { VoiceCommandResult, VoiceCommandContext } from './integrations/voice';
+import type { VoiceCommandResult, VoiceCommandContext, VoiceAudioActivity } from './integrations/voice';
 import { mergeVoiceTranscripts } from './integrations/voice-captions';
 import type { VoiceTranscript } from './integrations/voice-captions';
 
@@ -73,6 +73,7 @@ async function downloadEpisode(episode: Episode, report?: ServiceReport) {
 
 export default function App() {
   const [voiceTranscripts, setVoiceTranscripts] = useState<VoiceTranscript[]>([]);
+  const [voiceAudioActivity, setVoiceAudioActivity] = useState<VoiceAudioActivity | null>(null);
   const [mobileOpen, setMobileOpen] = useState(() => ['/kitchen','/hall'].includes(window.location.pathname.replace(/\/$/, '')));
   const [mobileEnvironment, setMobileEnvironment] = useState<'kitchen'|'hall'>(() => window.location.pathname.replace(/\/$/, '') === '/hall' ? 'hall' : 'kitchen');
   const [mobileBridgeReady, setMobileBridgeReady] = useState(false);
@@ -490,6 +491,7 @@ export default function App() {
       const recordingReceiver = mobileOpenRef.current ? mobileBridgeRef.current : null;
       await voice.startVoiceSession((text, context) => voiceHandler.current(text, context), {
         recordAudio: Boolean(recordingReceiver),
+        onAudioActivity: activity => { if (operation === voiceOperationRef.current) setVoiceAudioActivity(activity); },
         onAudioSegment: segment => recordingReceiver?.recordAudio(segment),
         onRecordingStatus: status => recordingReceiver?.recordingStatus(status),
         getWorld: () => mobileOpenRef.current && mobileBridgeRef.current ? mobileBridgeRef.current.getWorld() : ({ ...worldRef.current, executionReceipt: executionReceiptRef.current, simulationAutoApproval: false, simulationExecutionMode: 'immediate' }),
@@ -548,7 +550,7 @@ export default function App() {
     window.addEventListener('popstate', onRoute); return () => window.removeEventListener('popstate', onRoute);
   }, []);
 
-  if (mobileOpen) return <Suspense fallback={<div className="suite-loading">Loading mobile environment…</div>}><MobileKitchen key={mobileEnvironment} environment={mobileEnvironment} onBack={leaveKitchen} onBridge={registerMobile} voiceStatus={voiceState} voiceTranscripts={voiceTranscripts} voiceErrorMessage={voiceErrorMessage} onResetVoice={() => void recoverVoice()} onVoice={() => connectVoice()} onDisconnect={() => disconnectVoice()} onPauseVoice={async paused => { const voice = await import('./integrations/voice'); await voice.setVoiceSessionPaused(paused); }} announce={text => narrationRef.current(text)}/></Suspense>;
+  if (mobileOpen) return <Suspense fallback={<div className="suite-loading">Loading mobile environment…</div>}><MobileKitchen key={mobileEnvironment} environment={mobileEnvironment} onBack={leaveKitchen} onBridge={registerMobile} voiceStatus={voiceState} voiceTranscripts={voiceTranscripts} voiceAudioActivity={voiceAudioActivity} voiceErrorMessage={voiceErrorMessage} onResetVoice={() => void recoverVoice()} onVoice={() => connectVoice()} onDisconnect={() => disconnectVoice()} onPauseVoice={async paused => { const voice = await import('./integrations/voice'); await voice.setVoiceSessionPaused(paused); }} announce={text => narrationRef.current(text)}/></Suspense>;
 
   return (
     <div className="studio" data-layout={layout} data-sidebar={sidebarCollapsed ? 'collapsed' : 'open'} data-copilot={copilotCollapsed ? 'collapsed' : 'open'}>

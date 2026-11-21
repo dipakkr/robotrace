@@ -136,3 +136,9 @@ test('platform silence reminders and filler speech are explicitly disabled witho
  assert.equal('content' in properties.parameters.silence_config,false,'No inactive-user reminder text is configured');
  const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');assert.ok(prompt.includes('Empty text, whitespace, silence'));assert.ok(prompt.includes('emit no spoken content, make no tool calls'));
 });
+
+test('scene questions count grounded inventory surface items and preserve prop capability boundaries',()=>{
+ const {properties}=buildAgentConfig({env:fakeEnv,id:'session',channel:'room',agentToken:'rtc',toolSecret:'tool-secret'});
+ const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');
+ for(const concept of ['world.sceneInventory','sceneInventory.items explicitly assigned','rather than counting only the Cup and Bowl','rendered kettle','not camera perception','Never claim the kettle can be picked up','Never require valid Hindi or Hinglish'])assert.ok(prompt.toLowerCase().includes(concept.toLowerCase()),concept);
+});

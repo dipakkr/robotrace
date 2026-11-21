@@ -9,6 +9,7 @@ import { agoraAuthorization } from './auth.mjs';
 import { createMobileEvidenceStore } from './mobile-store.mjs';
 import { createMobileQaStore, validateMobileQaMetadata, mobileQaSummary } from './mobile-qa-store.mjs';
 import { createExperimentStore, MAX_EXPERIMENT_AUDIO_BYTES } from './experiment-store.mjs';
+import { physicalReportForRecord, renderPhysicalReportHtml } from './physical-report.mjs';
 import { createWorkflowStore } from './workflows.mjs';
 import { createPlannerService } from './planner-models.mjs';
 import { generateMobileCandidate } from './mobile-planner.mjs';
@@ -209,6 +210,16 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const jsonl = await experiments.jsonl(experimentExport[1]);
         if (jsonl === null) { respond(res, 404, { error: 'Experiment recording not found.' }); return; }
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Disposition': `attachment; filename="robotrace-experiment-${experimentExport[1].toLowerCase()}.jsonl"` }); res.end(jsonl); return;
+      }
+      const physicalReportRoute = url.pathname.match(/^\/api\/experiments\/([^/]+)\/report\.(html|json)$/);
+      if (req.method === 'GET' && physicalReportRoute) {
+        const record = await experiments.get(physicalReportRoute[1]);
+        if (!record) { respond(res,404,{error:'Experiment recording not found.'});return; }
+        const report=await physicalReportForRecord(record,await experiments.audioManifest(record.id));
+        const extension=physicalReportRoute[2];
+        if(url.searchParams.get('download')==='1')res.setHeader('Content-Disposition',`attachment; filename="robotrace-physical-evaluation-${record.id}.${extension}"`);
+        if(extension==='json'){respond(res,200,report);return;}
+        res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(renderPhysicalReportHtml(report));return;
       }
       const experimentRoute = url.pathname.match(/^\/api\/experiments\/([^/]+)$/);
       if (req.method === 'GET' && experimentRoute) {
