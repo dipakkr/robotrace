@@ -4,11 +4,17 @@ Checked **21 November 2026** against primary event, organizer and project source
 
 ## Lead with the operator’s job
 
-> RoboTrace helps a robotics QA operator test a spoken task, expose an AI plan that fails, and save the exact attempt as reviewed, replayable evidence.
+> RoboTrace helps a robotics QA operator test a spoken task, expose an AI plan that fails, and save the exact attempt as unreviewed, replayable evidence.
 
 Use **voice-assisted predeployment task QA** as the core. Explain “predeployment” as a software test before a later engineering/hardware gate. Do not imply this prototype approves physical deployment. The visible robot gives decisions inspectable consequences; the deliverable is the task, attempt, failed predicate and persistent report.
 
 The first customer hypothesis is a small robotics integration or demonstration-operations team. Its candidate pain is time spent reconstructing failed instructions and comparing inconsistent attempts. No interviews, commercial savings, purchasing commitment or frontier-lab acceptance have been established. Measure those next rather than putting invented numbers into the pitch.
+
+## Positioning alongside Cyberwave
+
+Cyberwave describes broad infrastructure spanning shared state/digital twins, bounded workflows, rehearsal before hardware, connected execution and mission evidence. That is its published positioning, not capabilities we independently validated. [Cyberwave platform overview](https://cyberwave.com/platform-overview)
+
+RoboTrace's narrower pitch is a **voice-to-action QA workbench**: speak a task, test behavior in an interactive scene, then retain conversation and motion as inspectable failure evidence and reusable test cases. We claim neither platform parity, hardware deployment nor trained-policy improvement.
 
 ## Current event facts
 
@@ -16,7 +22,7 @@ The official page requires **Agora Conversational AI**, **Murf Falcon speech out
 
 The public mentor list includes Akash Kamerkar, Senior Data Scientist at ABB; Aharshraj Gunasekaran, Senior Engineer at Bosch; Agora architects Arunkumar Manoharan and Deenan S; and Murf engineers Gaurav Singh and Joel Gee Roy. These are published professional affiliations, not endorsements or evidence that someone specifically works on robotics. [Official mentor list](https://buildwithagora.knotic.co/)
 
-Do not invent rubric scores, assume a sponsor approves the use case, or describe a local demo readiness checklist as the organizer’s scoring system.
+The participant subsequently supplied a numerical rubric screenshot; its visible categories total 95 despite a /100 display. See the [provisional assessment](RUBRIC_ASSESSMENT.md). Do not treat our estimate as an awarded score, assume sponsor approval or call a local readiness checklist the organizer’s scoring system.
 
 ## Previous winners we can actually verify
 

@@ -10,6 +10,9 @@ import { createMobileEvidenceStore } from './mobile-store.mjs';
 import { createMobileQaStore, validateMobileQaMetadata, mobileQaSummary } from './mobile-qa-store.mjs';
 import { createExperimentStore, MAX_EXPERIMENT_AUDIO_BYTES } from './experiment-store.mjs';
 import { physicalReportForRecord, renderPhysicalReportHtml } from './physical-report.mjs';
+import { reanalyzeExperimentRecord } from './experiment-analysis.mjs';
+import { generateSpeechTestCases } from './speech-test-cases.mjs';
+import { createSpeechQaStore } from './speech-qa-store.mjs';
 import { createWorkflowStore } from './workflows.mjs';
 import { createPlannerService } from './planner-models.mjs';
 import { generateMobileCandidate } from './mobile-planner.mjs';
@@ -51,6 +54,7 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
   const mobileEvidence = createMobileEvidenceStore({ dataDirectory });
   const mobileQa = createMobileQaStore({ dataDirectory });
   const experiments = createExperimentStore({ dataDirectory });
+  const speechQa = createSpeechQaStore({dataDirectory,generate:(experiment,input)=>generateSpeechTestCases({env,fetchImpl,experiment,input})});
   const planner = createPlannerService({ env, fetchImpl });
   const sessions = new Map();
   const pendingStops = new Set();
@@ -211,11 +215,24 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         if (jsonl === null) { respond(res, 404, { error: 'Experiment recording not found.' }); return; }
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Disposition': `attachment; filename="robotrace-experiment-${experimentExport[1].toLowerCase()}.jsonl"` }); res.end(jsonl); return;
       }
+      const speechTestCases = url.pathname.match(/^\/api\/experiments\/([^/]+)\/test-cases$/);
+      if (['GET','POST'].includes(req.method) && speechTestCases) {
+        const record = await experiments.get(speechTestCases[1]);
+        if (!record) { respond(res,404,{error:'Experiment recording not found.'});return; }
+        if(req.method==='GET'){respond(res,200,{analysis:await speechQa.get(record)});return;}
+        respond(res,200,await speechQa.create(record,await body(req,4096)));return;
+      }
+      const experimentReevaluation = url.pathname.match(/^\/api\/experiments\/([^/]+)\/reevaluate$/);
+      if (req.method === 'GET' && experimentReevaluation) {
+        const record = await experiments.get(experimentReevaluation[1]);
+        if (!record) { respond(res,404,{error:'Experiment recording not found.'});return; }
+        respond(res,200,await reanalyzeExperimentRecord(record));return;
+      }
       const physicalReportRoute = url.pathname.match(/^\/api\/experiments\/([^/]+)\/report\.(html|json)$/);
       if (req.method === 'GET' && physicalReportRoute) {
         const record = await experiments.get(physicalReportRoute[1]);
         if (!record) { respond(res,404,{error:'Experiment recording not found.'});return; }
-        const report=await physicalReportForRecord(record,await experiments.audioManifest(record.id));
+        const report={...await physicalReportForRecord(record,await experiments.audioManifest(record.id)),llmQA:await speechQa.get(record)};
         const extension=physicalReportRoute[2];
         if(url.searchParams.get('download')==='1')res.setHeader('Content-Disposition',`attachment; filename="robotrace-physical-evaluation-${record.id}.${extension}"`);
         if(extension==='json'){respond(res,200,report);return;}

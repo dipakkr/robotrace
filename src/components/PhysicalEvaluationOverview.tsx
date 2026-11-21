@@ -16,7 +16,7 @@ export default function PhysicalEvaluationOverview({ experiment, savedReport }: 
   const x = (v: number) => ox + (v - b.minX) * scale, z = (v: number) => oz + (v - b.minZ) * scale;
   const points = (path: MobilePoint[]) => path.map(p => `${x(p[0])},${z(p[1])}`).join(' ');
   return <section className="physical-overview" aria-label="Physical AI route evaluation">
-    <header><div><span>ROBOTICS EVALUATION · SIMULATED TASK BEHAVIOR</span><h3>Planned route versus recorded motion</h3></div><span className="physical-review-label">Unreviewed evidence</span></header>
+    <header><div><span>RECORDED ROUTE</span><h3>Route evidence</h3></div><span className="physical-review-label">Unreviewed evidence</span></header>
     <p>Inspect the actual run before sharing its evaluation. Path length alone does not establish safety or optimal routing.</p>
     <div className="physical-route-picker" role="group" aria-label="Choose recorded route">{report.attempts.map((item, i) => <button key={item.id} aria-pressed={selectedIndex === i} onClick={() => setSelectedIndex(i)}>{i + 1}. {item.command}</button>)}</div>
     <div className="physical-route-evidence"><div>
@@ -33,11 +33,15 @@ export default function PhysicalEvaluationOverview({ experiment, savedReport }: 
       <div><dt>Controller travel</dt><dd>{attempt.metrics.actualTravelMeters.toFixed(2)} m</dd></div>
       <div><dt>Net displacement</dt><dd>{attempt.metrics.netDisplacementMeters.toFixed(2)} m</dd></div>
       <div><dt>Simulated duration</dt><dd>{attempt.metrics.durationSeconds.toFixed(2)} s</dd></div>
+      <div><dt>Mean speed · simulated</dt><dd>{attempt.metrics.speed.averageMetersPerSimSecond.toFixed(2)} m/s</dd></div>
+      <div><dt>Moving / stationary</dt><dd>{attempt.metrics.speed.movingSeconds.toFixed(2)} / {attempt.metrics.speed.stationarySeconds.toFixed(2)} s</dd></div>
+      <div><dt>Workstation facing</dt><dd>{attempt.orientationAssessment.status}{attempt.orientationAssessment.errorRadians!==null?` · ${(attempt.orientationAssessment.errorRadians*180/Math.PI).toFixed(1)}°`:''}</dd></div>
       <div><dt>Recorded states</dt><dd>{attempt.metrics.sampleCount}</dd></div>
       <div><dt>Route changes</dt><dd>{attempt.routeAssessment.reroutes}</dd></div>
       <div><dt>Native task checks</dt><dd>{attempt.taskAccepted ? 'Passed' : 'Not accepted'}</dd></div>
     </dl></div>
-    {attempt.routeAssessment.notes.map((note, i) => <p className="physical-route-note" key={i}>{note}</p>)}
+    <p className="physical-route-note">{attempt.routeAssessment.conditionsChanged?`${attempt.routeAssessment.personChanges} person changes · ${attempt.routeAssessment.blockChanges} block changes. Route length is not treated as a fixed-condition efficiency score.`:'No person or block change was recorded during this attempt.'}</p>
+    <details className="physical-route-method"><summary>Route measurement method</summary>{attempt.routeAssessment.notes.map((note,i)=><p key={i}>{note}</p>)}</details>
     <small>Floor X/Z in metres. Person markers are recorded at different times. Request-level success is evaluated separately below. These are analytic simulator traces, not measured motors or physical deployment certification.</small>
   </section>;
 }

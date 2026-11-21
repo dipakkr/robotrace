@@ -142,3 +142,15 @@ test('scene questions count grounded inventory surface items and preserve prop c
  const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');
  for(const concept of ['world.sceneInventory','sceneInventory.items explicitly assigned','rather than counting only the Cup and Bowl','rendered kettle','not camera perception','Never claim the kettle can be picked up','Never require valid Hindi or Hinglish'])assert.ok(prompt.toLowerCase().includes(concept.toLowerCase()),concept);
 });
+
+test('Hindi near-table imperatives specify logical navigation while distance questions and garbled ASR authorize no motion',()=>{
+ const {properties}=buildAgentConfig({env:fakeEnv,id:'session',channel:'room',agentToken:'rtc',toolSecret:'tool-secret'});
+ const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');
+ for(const concept of ['Table के पास जाओ','टेबल के पास जाओ','table ke paas jao mean Go to Table ONLY','no pickup, placement or extra task','validated logical docking goal','not a measured physical centimetre proximity','table kitna door hai','answer without motion','garbled or unrelated Arabic-script text','do not guess a navigation task','without requiring an English language switch'])assert.ok(prompt.includes(concept),concept);
+});
+
+test('delivered sink contents remain movable and clear-sink requests ask only for the missing destination',()=>{
+ const {properties}=buildAgentConfig({env:fakeEnv,id:'session',channel:'room',agentToken:'rtc',toolSecret:'tool-secret'});
+ const prompt=properties.llm.system_messages.map(message=>message.content).join(' ');
+ for(const concept of ['delivered flag records a prior completed placement, not a permanent lock','Sink को खाली करो','sink ko khaali karo','actual supported movable contents at Sink','explicitly applicable validated assignment SOP','ask ONE short question asking where to put','do not say a delivered Cup cannot be removed','Take cup from sink to counter','hold the Cup and do not invent a destination','Never choose an unrequested object or Home as a fallback','never invent washing, draining, liquids','Do not ask the user to repeat clear Hindi or Hinglish in English'])assert.ok(prompt.includes(concept),concept);
+});

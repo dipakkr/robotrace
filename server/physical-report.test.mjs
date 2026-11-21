@@ -36,3 +36,42 @@ test('local report HTML and JSON reopen persisted evidence and download without 
  const html=await fetch(`${base}${record.id}/report.html?download=1`);assert.equal(html.status,200);assert.match(html.headers.get('content-type'),/text\/html/);assert.match(html.headers.get('content-disposition'),/attachment; filename="robotrace-physical-evaluation/);assert.equal(html.headers.get('x-content-type-options'),'nosniff');assert.match(await html.text(),/<svg/);
  assert.equal((await fetch(`${base}${randomUUID()}/report.html`)).status,404);assert.deepEqual(await store.get(record.id),record);
 });
+
+test('current evaluator assessment is separate from immutable supplied historical request grades',async t=>{
+ const {record}=await saved(t);
+ const historic=structuredClone(record);historic.report.evaluatorRevision='historical-test-revision';historic.report.rows[0].status='unscored';historic.report.counts={passed:0,failed:0,unscored:1,'request-failed':0,cancelled:0};
+ const before=structuredClone(historic),report=await physicalReportForRecord(historic);
+ assert.deepEqual(historic,before);assert.equal(report.requests[0].status,'unscored');assert.equal(report.currentAssessment.rows[0].status,'passed');assert.equal(report.currentAssessment.evaluatorRevision,'robotrace-request-eval.4');assert.equal(report.sourceRecord.historicalEvaluatorRevision,'historical-test-revision');
+ const html=renderPhysicalReportHtml(report);assert.match(html,/current assessment/);assert.match(html,/Sealed historical grades/);assert.match(html,/historical-test-revision/);assert.match(html,/Current assessment above does not overwrite/);
+});
+
+test('workstation-facing diagnostic reports review and degrees separately from native historical grade',async t=>{
+ const {record}=await saved(t),report=await physicalReportForRecord(record);
+ report.attempts[0].orientationAssessment={status:'review',expectedYawRadians:0,observedYawRadians:.2,errorRadians:.2,toleranceRadians:.12,stationLabel:'Counter',basis:'Recorded analytic base yaw.'};
+ const html=renderPhysicalReportHtml(report);assert.match(html,/Workstation facing diagnostic/);assert.match(html,/review · 11.5° error/);assert.match(html,/review does not rewrite the saved native grade/);assert.equal(report.attempts[0].taskAccepted,true);
+});
+
+function proposedAnalysis(report){return {schema:'robotrace.speech-test-cases.v1',sourceExperimentId:report.identity.experimentId,model:'test-model',proposed:true,executionPerformed:false,coverage:{totalUserRequests:2,coveredUserRequests:1,uncoveredSourceTurnIds:['uncovered-turn'],generatedCaseCount:1},cases:[{sourceTurnId:'user:1',intent:'navigate',expectedBehavior:'execute',expectedSummary:'Reach the requested station without pickup.',predicates:[{type:'base-at-station',stationId:'counter'}],verification:{status:'failed',checks:[{predicate:{type:'base-at-station',stationId:'counter'},passed:false,detail:'Recorded base remained at home.'}],association:{confidence:'explicit'},actualCommands:['Go Home'],assistantReplies:[{id:'reply:1',text:'The cup cannot be removed.',at:1700000001000}],source:{text:'Go to counter',kind:'recorded-asr'},reason:'The proposed station predicate was not met.'},conversationReview:{status:'issue',reason:'The response described an unsupported capability limitation.',evidenceReplyIds:['reply:1'],proposed:true}}]};}
+
+test('conversation report renders actual coverage, measured predicates and separately proposed semantic review',async t=>{
+ const {record}=await saved(t),report=await physicalReportForRecord(record);report.llmQA=proposedAnalysis(report);const html=renderPhysicalReportHtml(report);
+ for(const text of ['Conversation-derived test cases','1/2 final user requests covered','Go to counter','Reach the requested station without pickup.','Base at counter','Recorded base remained at home.','Go Home','Unreviewed LLM conversation judgment: issue','The cup cannot be removed.','reply:1','uncovered-turn','Review priorities','not human gold'])assert.ok(html.includes(text),text);
+ assert.match(html,/class="verdict failed"/);assert.doesNotMatch(html.replace(/<style>[\s\S]*?<\/style>/g,''),/100%|universally sufficient/);
+});
+
+test('missing, invalid or source-mismatched speech analysis cannot masquerade as completed QA',async t=>{
+ const {record}=await saved(t),report=await physicalReportForRecord(record);assert.match(renderPhysicalReportHtml(report),/Pending\./);
+ report.llmQA=proposedAnalysis(report);report.llmQA.sourceExperimentId='other-record';assert.match(renderPhysicalReportHtml(report),/source experiment does not match/);assert.doesNotMatch(renderPhysicalReportHtml(report),/Recorded base remained at home/);
+ report.llmQA.sourceExperimentId=report.identity.experimentId;report.llmQA.coverage={totalUserRequests:NaN,coveredUserRequests:50};assert.match(renderPhysicalReportHtml(report),/Request coverage not established/);
+});
+
+test('model expectations, coverage IDs, semantic reasons and quoted replies are escaped',async t=>{
+ const {record}=await saved(t),report=await physicalReportForRecord(record);report.speechTestAnalysis=proposedAnalysis(report);const attack='<img src=x onerror="alert(1)"><script>alert(1)</script>',analysis=report.speechTestAnalysis;
+ analysis.model=attack;analysis.coverage.uncoveredSourceTurnIds=[attack];Object.assign(analysis.cases[0],{intent:attack,expectedSummary:attack});analysis.cases[0].verification.assistantReplies[0].text=attack;analysis.cases[0].conversationReview.reason=attack;
+ const html=renderPhysicalReportHtml(report);assert.doesNotMatch(html,/<img|<script|\[object Object\]/);assert.match(html,/&lt;script/);assert.match(html,/&quot;alert/);
+});
+
+test('recorded speed diagnostics name simulation clock and never imply measured hardware speed',async t=>{
+ const {record}=await saved(t),report=await physicalReportForRecord(record);report.attempts[0].metrics.speed={averageMetersPerSimSecond:.5,configuredMetersPerSimSecond:.8,movingSeconds:2,stationarySeconds:1,peakSampledMetersPerSimSecond:.8,rotationSeconds:.2,basis:'native-simulated-state-intervals; not motor telemetry or wall-clock speed'};
+ const html=renderPhysicalReportHtml(report);assert.match(html,/Average base speed/);assert.match(html,/0.500 m\/sim s/);assert.match(html,/Moving \/ stationary/);assert.match(html,/not wall-clock playback or measured motor telemetry/);
+});

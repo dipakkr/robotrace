@@ -383,8 +383,12 @@ export default function MobileKitchen({ environment = 'kitchen', onBack, onBridg
     if (sessionAction === 'stopping') return;
     setSessionAction('stopping'); sessionPausedRef.current = true;
     try {
-      await handler.current('stop'); await onDisconnect(); await experiment.finish(ref.current);
-      say('Simulation stopped. Voice ended, pending tasks cleared, and this scene remains open.', 'system');
+      await handler.current('stop');
+      let shutdownError: unknown = null;
+      try { await onDisconnect(); } catch (error) { shutdownError = error; }
+      await experiment.finish(ref.current);
+      if(shutdownError) say(`${shutdownError instanceof Error ? shutdownError.message : 'Remote voice shutdown was not confirmed.'} Local recording is frozen; keep this draft and retry cleanup before starting another session.`, 'error');
+      else say('Simulation stopped. Voice ended, pending tasks cleared, and this scene remains open.', 'system');
     } catch (error) { say(error instanceof Error ? error.message : 'Voice shutdown was not confirmed. Robot motion is stopped.', 'error'); }
     finally { sessionPausedRef.current = false; setSessionPaused(false); setSessionAction(null); }
   };

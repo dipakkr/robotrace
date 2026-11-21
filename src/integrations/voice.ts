@@ -111,6 +111,7 @@ export async function startVoiceSession(
   let snapshotTimer: ReturnType<typeof setInterval> | undefined;
   let audioActivityTimer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
+  let stopPromise: Promise<void> | null = null;
   let agentAudioConnected = false;
   const captions = new AgoraCaptionDecoder();
   const pauseGate = new VoicePauseCommandGate();
@@ -154,31 +155,45 @@ export async function startVoiceSession(
   const onPageHide = () => {
     if (sessionId && !stopped) navigator.sendBeacon('/api/voice/stop', new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }));
   };
-  const stop = async () => {
-    if (stopped) return;
+  const stop = (): Promise<void> => {
+    if (stopPromise) return stopPromise;
     stopped = true;
+    // Assign first, before callbacks or SDK calls: reentrant and concurrent
+    // callers must await this exact final-flush/remote-shutdown operation.
+    let finish!: () => void, reject!: (error: Error) => void;
+    stopPromise = new Promise<void>((resolve, fail) => { finish = resolve; reject = fail; });
+    const failures: string[] = [];
     window.removeEventListener('pagehide', onPageHide);
-    events?.close();
-    captions.clear();
-    speechControls.clear();
-    pauseGate.clear(); remoteAudio.clear();
+    try { events?.close(); } catch { failures.push('The local voice command stream could not be closed.'); }
+    captions.clear(); speechControls.clear(); pauseGate.clear();
     if (pendingPause === setPaused) pendingPause = null;
-    clearInterval(snapshotTimer);
-    clearInterval(audioActivityTimer); reportAudioActivity(true);
-    // Stop recorders synchronously, then release SDK tracks. Wait for their final
-    // data events and receiver callbacks before announcing a disconnected session.
-    const recordingFlush = audioRecorder?.stop();
-    microphone?.stop(); microphone?.close();
-    await client.leave().catch(() => {});
-    if (recordingFlush) await recordingFlush;
-    if (activeConnection?.stop === stop) activeConnection = null;
-    let remoteStopError = '';
-    if (sessionId) {
-      try { await jsonRequest('/api/voice/stop', { sessionId }); }
-      catch { remoteStopError = 'Local audio stopped. Remote-agent shutdown could not be confirmed; check the Agora console.'; }
+    clearInterval(snapshotTimer); clearInterval(audioActivityTimer);
+    // Finalize captures before releasing SDK-owned tracks. Local playback stops
+    // synchronously; remote leave and final Blob receivers are awaited below.
+    let recordingFlush: Promise<void> | undefined;
+    try { recordingFlush = audioRecorder?.stop(); } catch { failures.push('Final audio recording delivery could not be confirmed.'); }
+    for (const track of remoteAudio) {
+      try { track.setVolume(0); } catch { failures.push('Remote audio mute could not be confirmed.'); }
+      try { track.stop(); } catch { failures.push('Remote audio playback stop could not be confirmed.'); }
     }
-    options.onStatus?.('disconnected', remoteStopError || undefined);
-    if (remoteStopError) throw new Error(remoteStopError);
+    remoteAudio.clear();
+    try { microphone?.stop(); } catch { failures.push('Microphone stop could not be confirmed.'); }
+    try { microphone?.close(); } catch { failures.push('Microphone release could not be confirmed.'); }
+    reportAudioActivity(true);
+    void (async () => {
+      try { await client.leave(); } catch { failures.push('RTC channel departure could not be confirmed.'); }
+      try { if (recordingFlush) await recordingFlush; } catch { failures.push('Final audio recording delivery could not be confirmed.'); }
+      if (sessionId) {
+        try { const confirmation = await jsonRequest<{ stopped?: boolean }>('/api/voice/stop', { sessionId }); if (confirmation.stopped !== true) failures.push('Remote-agent shutdown was not acknowledged; check the Agora console.'); }
+        catch { failures.push('Remote-agent shutdown could not be confirmed; check the Agora console.'); }
+      }
+      if (activeConnection?.stop === stop) activeConnection = null;
+      if (pendingStop === stop) pendingStop = null;
+      const message = [...new Set(failures)].join(' ');
+      try { options.onStatus?.(message ? 'error' : 'disconnected', message || undefined); } catch { /* Cleanup must still settle every waiting caller. */ }
+      if (message) reject(new Error(message)); else finish();
+    })();
+    return stopPromise;
   };
 
   pendingStop = stop;
@@ -220,6 +235,7 @@ export async function startVoiceSession(
   try {
     const { default: AgoraRTC } = await import('agora-rtc-sdk-ng');
     microphone = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+    if (stopped || generation !== voiceGeneration) throw new Error('Voice connection cancelled.');
     if (options.onAudioActivity) { reportAudioActivity(); audioActivityTimer = setInterval(() => { if (!stopped && generation === voiceGeneration) reportAudioActivity(); }, 150); }
     audioRecorder?.addTrack('user', microphone.getMediaStreamTrack());
     if (pauseGate.paused) await microphone.setMuted(true);
@@ -242,6 +258,7 @@ export async function startVoiceSession(
       } catch (error) {
         result = { completed: false, error: error instanceof Error ? error.message : 'The simulator could not execute this instruction.' };
       }
+      if (stopped || generation !== voiceGeneration) return;
       await jsonRequest('/api/voice/ack', { sessionId, commandId: instruction.id, result }).catch(() => {});
     });
     events.onerror = () => { if (!stopped) options.onStatus?.('error', 'Simulator command bridge disconnected. Voice motion outcomes may be unconfirmed.'); };
@@ -271,10 +288,9 @@ export async function startVoiceSession(
   }
 }
 
-export async function stopVoiceSession(): Promise<void> {
+export function stopVoiceSession(): Promise<void> {
   voiceGeneration++;
-  if (activeConnection) await activeConnection.stop();
-  else await pendingStop?.();
+  return activeConnection?.stop() ?? pendingStop?.() ?? Promise.resolve();
 }
 
 /** Keep RTC joined while muting both microphone publication and remote playback. */

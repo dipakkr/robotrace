@@ -31,9 +31,9 @@ export function directSpeechCommand(text: string, final: boolean): DirectSpeechC
   if (!final) return null;
   const relative = relativeSpeech(value);
   if (relative) return relative;
-  const indian = value.match(/^(?:(?:कृपया|रोबोट|please|robot) )*(sink|सिंक|सिन्क|table|टेबल|counter|काउंटर|home|होम|घर|ghar|dock)(?: पर| पे| तक| की ओर| par| pe| tak)? (?:जाओ|चलो|jao|chalo)(?: कृपया| please)?$/);
+  const indian = value.match(/^(?:(?:कृपया|रोबोट|please|robot) )*(sink|सिंक|सिन्क|table|टेबल|मेज|मेज़|counter|काउंटर|home|होम|घर|ghar|dock)(?: पर| पे| तक| की ओर| के पास| के करीब| के नज़दीक| के नजदीक| par| pe| tak| ke paas| ke pas| ke pass| ke kareeb| ke nazdeek)? (?:जाओ|चलो|jao|chalo)(?: कृपया| please)?$/);
   if (indian) {
-    const destinations: Record<string, string> = { sink: 'Sink', 'सिंक': 'Sink', 'सिन्क': 'Sink', table: 'Table', 'टेबल': 'Table', counter: 'Counter', 'काउंटर': 'Counter', home: 'Home', 'होम': 'Home', 'घर': 'Home', ghar: 'Home', dock: 'Home' };
+    const destinations: Record<string, string> = { sink: 'Sink', 'सिंक': 'Sink', 'सिन्क': 'Sink', table: 'Table', 'टेबल': 'Table', 'मेज': 'Table', 'मेज़': 'Table', counter: 'Counter', 'काउंटर': 'Counter', home: 'Home', 'होम': 'Home', 'घर': 'Home', ghar: 'Home', dock: 'Home' };
     return { kind: 'navigation', command: `Go to ${destinations[indian[1]]}` };
   }
   const match = value.match(/^(?:please )?(?:(?:can|could|would) you (?:please )?)?(?:go|navigate|drive|return|move)(?: to)? (?:the )?(sink|sync|table|counter|home|dock)(?: please)?$/);

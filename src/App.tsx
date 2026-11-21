@@ -488,6 +488,7 @@ export default function App() {
     setVoiceErrorMessage(null); setVoiceState('connecting');
     try {
       const voice = await import('./integrations/voice');
+      if (operation !== voiceOperationRef.current) return;
       const recordingReceiver = mobileOpenRef.current ? mobileBridgeRef.current : null;
       await voice.startVoiceSession((text, context) => voiceHandler.current(text, context), {
         recordAudio: Boolean(recordingReceiver),
@@ -517,10 +518,10 @@ export default function App() {
     } catch { const message = 'Voice reset failed. Please retry Reset voice.'; setVoiceState('error'); setVoiceErrorMessage(message); setNotice(message); }
     finally { voiceResettingRef.current = false; voiceAttemptRef.current = false; }
   };
-  const disconnectVoice = async () => { if (voiceResettingRef.current) return; voiceAttemptRef.current = true; voiceOperationRef.current++; try { const voice = await import('./integrations/voice'); await voice.stopVoiceSession(); setVoiceState('disconnected'); setVoiceErrorMessage(null); } catch { const message = 'Voice disconnect could not be confirmed. Reset voice before reconnecting.'; setVoiceState('error'); setVoiceErrorMessage(message); setNotice(message); } finally { voiceAttemptRef.current = false; } };
+  const disconnectVoice = async () => { voiceAttemptRef.current = true; voiceOperationRef.current++; try { const voice = await import('./integrations/voice'); await voice.stopVoiceSession(); setVoiceState('disconnected'); setVoiceErrorMessage(null); } catch { const message = 'Voice disconnect could not be confirmed. Reset voice before reconnecting.'; setVoiceState('error'); setVoiceErrorMessage(message); setNotice(message); throw new Error(message); } finally { voiceAttemptRef.current = voiceResettingRef.current; } };
 
   const openKitchen = async (environment: 'kitchen'|'hall' = 'kitchen') => {
-    if (voiceState === 'live' || voiceState === 'connected') await disconnectVoice();
+    if (voiceState === 'live' || voiceState === 'connected') { try { await disconnectVoice(); } catch { return; } }
     const quiet = new URLSearchParams(window.location.search).get('voice') === 'off';
     const path = environment === 'hall' ? '/hall' : '/kitchen';window.history.pushState({}, '', quiet ? `${path}?voice=off` : path);
     setMobileEnvironment(environment);setMobileBridgeReady(false);autoVoicePending.current = environment === 'kitchen' && !quiet; setMobileOpen(true);

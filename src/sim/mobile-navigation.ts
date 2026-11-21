@@ -271,10 +271,21 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
     const navigationTarget = step.kind === 'navigate' ? step.target ?? station?.dock : undefined;
     if (step.kind === 'navigate' ? !navigationTarget : !station) return fail('The mobile navigation target or handling station is missing. Replan from the current scene.');
     let next: MobilePoint = [...world.robot.position];
-    let spent = 0, complete = false;
+    let spent = 0, complete = false, aligningStation = false;
+    let alignedYaw: number | undefined;
     if (step.kind === 'navigate') {
       let waypoint = step.path[mission.waypointIndex];
-      if (!waypoint) { complete = true; }
+      if (!waypoint) {
+        complete = true;
+        if (station && station.id !== 'home' && !step.target && distance(station.dock,station.surface)>EPSILON) {
+          const desiredYaw=Math.atan2(station.surface[0]-station.dock[0],station.surface[1]-station.dock[1]);
+          const delta=Math.atan2(Math.sin(desiredYaw-world.robot.yaw),Math.cos(desiredYaw-world.robot.yaw));
+          if(Math.abs(delta)>EPSILON){
+            const angularSpeed=1.2,turn=Math.sign(delta)*Math.min(Math.abs(delta),remaining*angularSpeed);
+            aligningStation=true;alignedYaw=Math.atan2(Math.sin(world.robot.yaw+turn),Math.cos(world.robot.yaw+turn));spent=Math.abs(turn)/angularSpeed;
+          }
+        }
+      }
       else {
         if (!mobileSegmentIsClear(world, world.robot.position, waypoint) || humanBlocks(world, waypoint)) {
           if (step.straight) { world.robot.mode = 'paused'; world.robot.phase = 'The requested straight segment is obstructed. Move or clear the obstacle, then explicitly resume; no detour was inserted.'; event(world, 'blocked', world.robot.phase); return { world, done: false, blocked: world.robot.phase }; }
@@ -324,10 +335,11 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
       event(world, 'blocked', world.robot.phase);
       return { world, done: false, blocked: world.robot.phase };
     }
-    world.robot.phase = step.label;
+    world.robot.phase = aligningStation ? `Align base to face ${station.label}` : step.label;
     if (step.kind === 'navigate') {
       const travelled = distance(world.robot.position, next);
-      if (travelled > EPSILON) world.robot.yaw = Math.atan2(next[0] - world.robot.position[0], next[1] - world.robot.position[1]);
+      if (alignedYaw !== undefined) world.robot.yaw = alignedYaw;
+      else if (travelled > EPSILON) world.robot.yaw = Math.atan2(next[0] - world.robot.position[0], next[1] - world.robot.position[1]);
       world.robot.position = next; world.distanceTravelled += travelled;
       if (world.robot.cargoObjectId) {
         const cargo = world.objects.find(object => object.id === world.robot.cargoObjectId)!;
@@ -336,6 +348,11 @@ export function advanceMobileWorld(source: MobileWorld, dt: number): MobileAdvan
       const waypoint = step.path[mission.waypointIndex];
       if (waypoint && distance(next, waypoint) <= EPSILON) mission.waypointIndex++;
       complete = mission.waypointIndex >= step.path.length;
+      if(complete&&station&&station.id!=='home'&&!step.target&&distance(station.dock,station.surface)>EPSILON){
+        const desiredYaw=Math.atan2(station.surface[0]-station.dock[0],station.surface[1]-station.dock[1]);
+        complete=Math.abs(Math.atan2(Math.sin(desiredYaw-world.robot.yaw),Math.cos(desiredYaw-world.robot.yaw)))<=EPSILON;
+        if(complete&&aligningStation)event(world,'navigate',`Base alignment to face ${station.label} verified.`);
+      }
     } else if (step.kind === 'reach-check') {
       mission.phaseElapsed += spent; complete = mission.phaseElapsed >= 0.3;
     } else {

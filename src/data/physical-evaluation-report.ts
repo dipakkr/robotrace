@@ -31,6 +31,17 @@ export function buildPhysicalEvaluationReport(experiment:VoiceExperiment,savedRe
   const actualSampledPathMeters=mobileRouteLength(actual);
   const actualTravelMeters=analysis.metrics.distanceTravelled;
   const durationSeconds=analysis.metrics.durationSeconds;
+  let movingSeconds=0,stationarySeconds=0,rotationSeconds=0,peakSampledMetersPerSimSecond=0;
+  for(let index=1;index<trajectory.length;index++){
+   const prior=trajectory[index-1].world,current=trajectory[index].world,dt=current.simTime-prior.simTime;
+   if(dt<=0)continue;
+   const moved=Math.hypot(current.robot.position[0]-prior.robot.position[0],current.robot.position[1]-prior.robot.position[1]);
+   const turned=Math.abs(Math.atan2(Math.sin(current.robot.yaw-prior.robot.yaw),Math.cos(current.robot.yaw-prior.robot.yaw)));
+   peakSampledMetersPerSimSecond=Math.max(peakSampledMetersPerSimSecond,moved/dt);
+   if(moved>1e-6)movingSeconds+=dt;else{stationarySeconds+=dt;if(turned>1e-6)rotationSeconds+=dt;}
+  }
+  const speed={averageMetersPerSimSecond:durationSeconds>0?actualTravelMeters/durationSeconds:0,configuredMetersPerSimSecond:initial.robot.speed,movingSeconds,stationarySeconds,peakSampledMetersPerSimSecond,rotationSeconds,basis:'native-simulated-state-intervals; not motor telemetry or wall-clock speed' as const};
+
   const netDisplacementMeters=Math.hypot(final.robot.position[0]-initial.robot.position[0],final.robot.position[1]-initial.robot.position[1]);
   const conditionsChanged=analysis.interventions.humanChanges>0||analysis.interventions.floorBlockChanges>0;
   const originalPlanClear=plannedSegments.every(segment=>segment.path.slice(1).every((point,index)=>mobileSegmentIsClear(initial,segment.path[index],point)&&mobileSegmentAvoidsHuman(initial,segment.path[index],point)));
@@ -43,9 +54,13 @@ export function buildPhysicalEvaluationReport(experiment:VoiceExperiment,savedRe
    originalPlanClear?'The original planned segments pass the initial map/person geometric checks.':'The original plan is not clear under the initial person/map conditions; its length is not used as an efficiency baseline.',
    'Initial bounded-A* lengths describe only the first active navigation target, not a global multi-step task optimum. Extra distance alone does not fail a task or establish a model bug, physical collision or safety defect.',
   ];
-  return{id:attempt.id,command:attempt.command,outcome:analysis.outcome,taskAccepted:analysis.accepted,checks:clone(analysis.checks),requestIds:savedReport.rows.filter(row=>row.observed.attemptId===attempt.id).map(row=>row.id),
+  const goal=final.mission?.plan.goal,station=final.stations.find(item=>item.id===goal?.stationId);
+  const expectedYawRadians=station&&station.id!=='home'&&!goal?.position&&Math.hypot(station.surface[0]-station.dock[0],station.surface[1]-station.dock[1])>1e-6?Math.atan2(station.surface[0]-station.dock[0],station.surface[1]-station.dock[1]):null;
+  const errorRadians=expectedYawRadians===null?null:Math.abs(Math.atan2(Math.sin(expectedYawRadians-final.robot.yaw),Math.cos(expectedYawRadians-final.robot.yaw)));
+  const orientationAssessment={status:(errorRadians===null?'not-applicable':errorRadians<=.12?'aligned':'review') as 'aligned'|'review'|'not-applicable',expectedYawRadians,observedYawRadians:final.robot.yaw,errorRadians,toleranceRadians:.12,...(station?{stationLabel:station.label}:{}),basis:'station-surface-facing diagnostic, not historical acceptance rule' as const};
+  return{id:attempt.id,command:attempt.command,outcome:analysis.outcome,taskAccepted:analysis.accepted,orientationAssessment,checks:clone(analysis.checks),requestIds:savedReport.rows.filter(row=>row.observed.attemptId===attempt.id).map(row=>row.id),
    routes:{bounds:clone(initial.bounds),obstacles:clone(initial.obstacles),planned,actual,humanPositions,start:clone(initial.robot.position),end:clone(final.robot.position),plannedSegments,routeChanges,floorBlockChanges:clone(analysis.interventions.layoutInterventions)},
-   metrics:{plannedLengthMeters,actualSampledPathMeters,actualTravelMeters,netDisplacementMeters,durationSeconds,sampleCount:trajectory.length,plannedToActualTravelRatio:comparable?plannedLengthMeters/actualTravelMeters:null},
+   metrics:{plannedLengthMeters,actualSampledPathMeters,actualTravelMeters,netDisplacementMeters,durationSeconds,sampleCount:trajectory.length,speed,plannedToActualTravelRatio:comparable?plannedLengthMeters/actualTravelMeters:null},
    routeAssessment:{conditionsChanged,personChanges:analysis.interventions.humanChanges,blockChanges:analysis.interventions.floorBlockChanges,reroutes:analysis.interventions.reroutes,initialStaticBoundedRouteMeters:audit?.staticBoundedRouteMeters??null,initialHumanAwareBoundedRouteMeters:audit?.humanAwareBoundedRouteMeters??null,notes},
   };
  });

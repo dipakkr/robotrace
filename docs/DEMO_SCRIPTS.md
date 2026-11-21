@@ -2,6 +2,12 @@
 
 Use the current [three-minute README sequence](../README.md#a-three-minute-demonstration): **Start → voice actions → Stop → Save & view report → inspect/export**. This includes whole-session speech/audio recording and requested-versus-observed QA. The older matched-pair demo below remains an optional advanced example, not the current primary stage flow.
 
+**Current stage opening:**
+
+> “RoboTrace is a voice-to-action QA workbench for robotics teams. Speak naturally, test robot behavior in an interactive scene, and turn the conversation and motion trace into reviewable failure evidence and reusable test cases.”
+
+Show the saved failed request and its actual trace. Hardware deployment and trained-policy improvement remain separate gates. [Positioning and comparison source](HACKATHON_POSITIONING.md#positioning-alongside-cyberwave).
+
 There is no command textbox in the free kitchen. Pause and Stop are session controls in the conversation area; stopping keeps the route and scene. Saving after Stop is explicit, and records remain unreviewed. If a save fails, retain the dialog and retry; do not discard or refresh the only browser draft.
 
 # Three-minute product demo and recovery

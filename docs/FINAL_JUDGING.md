@@ -1,6 +1,8 @@
 # Final judging acceptance and stage evidence
 
-These are the seven final judging criteria supplied by the participant on 21 November 2026. No weights or numeric scoring rubric were supplied. This is an evidence checklist, not an official score prediction.
+The participant subsequently supplied a rubric screenshot: **Agora Conversational AI 25, Murf Falcon 20, Agentic Action 20, Technical Architecture 15, End-to-End 10, and Relevance/UX 5**. The visible maxima sum to **95**, although the interface says **/100**; the remaining five points are unexplained. Do not invent their category or assume normalization.
+
+The [provisional rubric assessment](RUBRIC_ASSESSMENT.md) records our working **80/95** estimate (84.2% only if normalized), its evidence and deductions. It is not a judge's score or a winning prediction. The seven qualitative checks below remain a demonstration checklist; they are not seven additional weighted categories.
 
 RoboTrace is a voice-operated robot task-planning sandbox and QA workbench. A robotics integration engineer can direct a mobile robot in a known-map kitchen, intervene during execution, inspect failures, and preserve portable evidence. The workplace workflow is task assignment → contextual planning → controller/tool execution → checked outcome → saved service/evaluation record and regression handoff.
 

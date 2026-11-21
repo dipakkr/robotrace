@@ -6,11 +6,15 @@ Current release, 2026-11-21. This describes implemented local simulation and rec
 
 1. Open the free kitchen environment. The separate photo-informed hall is navigation-only and keeps its actual scene inventory; it must not acquire invented kitchen objects.
 2. Select **Start simulation** to begin the experiment and connect voice. Speak a task, such as “Go straight one meter”, “Pick up the red cup”, or “Put the cup on Table”. Supported commands act immediately in the local simulator. Pickup/hold, carry, navigation and explicit placement have different goals.
-3. Use **Activity** for actual commands, results and checks. **Coordinates** shows the current simulator base pose, analytic arm/TCP, held object, target and route facts. These are derived simulator coordinates, not encoders or perception output.
+3. Collapse **Transcripts** to give the terminal more room without ending voice or recording. Start/Pause/Stop remain visible. Use **Activity** for actual commands, results and checks. **Coordinates** shows the current simulator base pose, analytic arm/TCP, held object, target and route facts. These are derived simulator coordinates, not encoders or perception output.
 4. A person or floor-block intervention may cause a validated detour or a recoverable pause. Literal straight movement is not silently converted to a detour. Inspect the actual route; a longer retained path may merit review without proving a model or physical-safety failure.
-5. Select **Stop simulation** to end the experiment. Inspect the save dialog and select **Save & compare**. This saves the frozen experiment and its actual outcome; it does not assert human quality approval. A stopped action is not counted as completed.
-6. In the QA console, inspect recognized requests, associated commands, requested-versus-observed results, recorded coordinates, action replay and available separate audio clips. Scrubbing and replay do not drive the live robot.
+5. Select **Stop simulation** to end the experiment. Inspect the save dialog and select **Save & view report**. This saves the frozen experiment and its actual outcome; it does not assert human quality approval. A stopped action is not counted as completed.
+6. Saving a new experiment opens the QA console and automatically proposes conversation test cases through the configured LLM. Up to 40 final recognized turns are supplied; coverage shows any remaining turns. An optional second call reviews the recorded replies. Inspect the proposed expectation beside the actual command, predicates, reply, coordinates and native replay. Model expectations and semantic judgments remain unreviewed. Scrubbing and replay do not drive the live robot.
 7. Export JSONL for inspection outside the app. The QA console links to [the standalone inspector](../public/voice-experiment-analysis.html), which can also be opened locally as a file.
+
+Stop cancels queued motion and connecting voice work, closes local microphone/playback/RTC streams and timers, flushes final audio clips, and preserves the scene on the kitchen route. Remote shutdown failures are shown while keeping the local draft. Repeated Start/Stop and delayed microphone/RTC completion have offline browser regression coverage; these checks do not replace a real microphone-and-speaker rehearsal.
+
+The derived LLM analysis is stored separately from the sealed original experiment. Reopening a cached report makes no new model request. Historical recordings require explicit generation; **Re-evaluate recorded run** recomputes current fixed rules without changing the saved historical grade.
 
 If a save fails, retain the draft and use **Retry** after the service is available. Do not refresh or reset the browser to repair a server validation problem: that can discard an unsaved recording. A successful service response, not merely clicking Save, establishes persistence.
 
@@ -25,7 +29,7 @@ For unambiguous relative movement, the report derives a requested point from the
 - **Cancelled:** the associated task stopped before completion; no completion is asserted.
 - **Unscored:** wording, answer quantity, source evidence or coverage does not establish an unambiguous supported expectation. A distance question is not given an invented exact-answer score. If such a question triggers an associated motion that it never requested, that unexpected action can still fail.
 
-Association records distinguish an explicit recorded turn/event ID from **temporal-only** proximity. Neither proves perfect speech-to-tool alignment. The current evaluator is `robotrace-request-eval.2`; historical sealed grades retain their original revision. Reopening must not silently rewrite a legitimate older grade merely because the evaluator improves.
+Association records distinguish an explicit recorded turn/event ID from **temporal-only** proximity. Neither proves perfect speech-to-tool alignment. The current evaluator is `robotrace-request-eval.4`; historical sealed grades retain their original revision. Reopening must not silently rewrite a legitimate older grade merely because the evaluator improves.
 
 ## Recording and export contract
 

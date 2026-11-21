@@ -106,7 +106,7 @@ flowchart LR
     Records --> Analysis[Independent export consumer]
 ```
 
-The workplace workflow is **request → retrieve current scene/SOP → execute meaningful simulation actions → communicate checked outcomes → persist a report and follow-up evidence**. This fits an employee copilot for robotics data and evaluation operations. The SOPs, assignments and record store are real local application data; they are not an external enterprise connector or a frontier-lab partnership. See the [hackathon positioning](docs/HACKATHON_POSITIONING.md) and [final judging checklist](docs/FINAL_JUDGING.md). The matrix records our interpretation of the track, not an official score.
+The workplace workflow is **request → retrieve current scene/SOP → execute meaningful simulation actions → communicate checked outcomes → persist a report and follow-up evidence**. This fits an employee copilot for robotics data and evaluation operations. The SOPs, assignments and record store are real local application data; they are not an external enterprise connector or a frontier-lab partnership. See the [hackathon positioning](docs/HACKATHON_POSITIONING.md), [final judging checklist](docs/FINAL_JUDGING.md), and [provisional assessment against the supplied rubric](docs/RUBRIC_ASSESSMENT.md). The visible rubric totals 95 despite a /100 interface; our working estimate is not a judge's score.
 
 ## Data another program can inspect
 

@@ -186,3 +186,17 @@ test('refused commands and Stop controls cannot inherit completion from another 
   gate.receive(transcript('refused','Go straight six meters'));const refused=await gate.executeTool('Go straight 6 meters');assert.equal(refused.completed,false);assert.match(refused.error!,/0.05/);assert.equal(refused.receiptFreshness,undefined);
   gate.receive(transcript('stop','Stop'));const stop=await gate.executeTool('stop');assert.equal(stop.completed,true);assert.equal(stop.summary?.startsWith('Control stop applied.'),true);
 });
+
+
+test('clear mixed-script near-station commands navigate only after a final caption',()=>{
+ for(const text of ['Table के पास जाओ.','टेबल के पास जाओ।','मेज़ के करीब चलो','कृपया table के नज़दीक जाओ','table ke paas jao','table ke pas jao','table ke pass jao please','counter ke nazdeek jao','सिंक के पास जाओ']){const station=/counter/.test(text)?'Counter':/सिंक/.test(text)?'Sink':'Table';assert.equal(directSpeechCommand(text,false),null,text);assert.deepEqual(directSpeechCommand(text,true),{kind:'navigation',command:`Go to ${station}`},text);}
+ for(const text of ['Table के पास','table ke paas','Table के पास मत जाओ','table ke paas mat jao','अगर table के पास जाओ','क्या table के पास जाना है','Table के पास जाओ और कप उठाओ','تیبل که بازه ها'])assert.equal(directSpeechCommand(text,true),null,text);
+});
+test('reported Table Hindi caption produces actual native dock motion without a second task or pickup',async()=>{
+ let world=createMobileKitchen();const initialObjects=structuredClone(world.objects),calls:string[]=[];
+ const gate=new VoiceSpeechControlGate(command=>{calls.push(command);const started=startMobilePlan(world,planMobileTask(command,world),'immediate');world=started.world;return{completed:false,status:'running',world};});
+ gate.receive(transcript('actual-hindi-request','Table के पास जाओ.'));assert.deepEqual(calls,['Go to Table']);
+ for(let tick=0;tick<1000;tick++){const result=advanceMobileWorld(world,.1);world=result.world;if(result.done||result.error||result.blocked)break;}
+ assert.equal(world.mission?.status,'completed');assert.equal(world.mission?.plan.goal?.stationId,'table');assert.ok(world.distanceTravelled>0);assert.deepEqual(world.objects,initialObjects);assert.equal(world.robot.cargoObjectId,null);assert.ok(mobileGoalChecks(world).every(check=>check.passed));
+ assert.equal((await gate.executeTool('Take cup to table')).status,'rejected');assert.equal((await gate.executeTool('Go Home')).status,'rejected');assert.deepEqual(calls,['Go to Table']);
+});
