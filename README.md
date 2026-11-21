@@ -148,6 +148,8 @@ Research and design context: [Physical AI research](docs/PHYSICAL_AI_RESEARCH.md
 
 ## Share a robotics evaluation report
 
+![Robot-mounted simulated camera and compact voice input/output panels](docs/media/robotrace-roboeye.png)
+
 Open a saved experiment in **QA console → Open evaluation report**. The standalone report includes initial planned and recorded routes, furniture/person proxies, measured travel, task checks, request-versus-observed outcomes and evidence metadata. **Download report** saves portable HTML; its Print button supports Save as PDF. **Evaluation JSON** provides the derived machine-readable report. Historical grades and original evidence seals are preserved. This evaluates task-level kinematic behavior, not learned motor-policy performance or physical safety.
 
 The kitchen now exposes **Objects** for known scene inventory, including the rendered kettle, canisters, utensils, plates and plant. Fixed visual items are identifiable but not graspable; Cup and Bowl remain movable. **RoboEye** switches to a simulated camera at the robot’s current pose. Its image is rendered from the known scene, not camera perception. Microphone/ASR and Murf Falcon via Agora panels show both actual transcript streams and SDK audio activity.
