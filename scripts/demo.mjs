@@ -5,6 +5,7 @@ import { delimiter, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { callbackDnsHealth } from './callback-dns-health.mjs';
 
 const PROJECT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const LOCAL = resolve(PROJECT, '.local');
@@ -131,7 +132,12 @@ async function health(url, type, deadline) {
     if (type === 'preview') return (await response.text()).includes('RoboTrace');
     const value = await response.json();
     return value?.available === true && typeof value.configured === 'boolean';
-  } catch { return false; }
+  } catch (error) {
+    if (type === 'callback' && ['ENOTFOUND', 'EAI_AGAIN'].includes(error?.cause?.code) && deadline > Date.now()) {
+      return callbackDnsHealth(url, { timeoutMs: Math.max(1, Math.min(1800, deadline - Date.now())) });
+    }
+    return false;
+  }
 }
 
 async function waitUntil(check, deadline, failure) {
