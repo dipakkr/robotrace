@@ -4,6 +4,7 @@ import { baselineMobileCandidate, evaluateMobileCandidate, validateMobileCandida
 import type { MobileCandidate, MobileCandidateAction } from './mobile-candidates';
 import { createMobileKitchen, setMobileHuman } from './mobile-navigation';
 import type { MobileWorld } from './mobile-navigation';
+import { MOBILE_PROTECTED_POLICY, mobileProtectedChange } from '../data/mobile-protected-policy.mjs';
 
 function evaluate(candidate: unknown, world = createMobileKitchen()) {
   return evaluateMobileCandidate({ world, candidate, source: 'human', label: 'Submitted plan' });
@@ -110,6 +111,22 @@ test('picking up and returning a protected bowl still fails even when its comple
   assert.equal(result.failureStepIndex, 7, 'the first actual protected pickup is step8, even when a reach check ends in the same native tick');
   assert.deepEqual(result.failedAction, { skill: 'pickup', station: 'table', objectId: 'bowl' });
   assert.equal(result.error, undefined, 'task-rule violation does not invent a controller execution error');
+  assert.deepEqual(result.protectedObjectPolicy, MOBILE_PROTECTED_POLICY);
+  assert.equal(result.protectedViolations.length, 1, 'Only the first native violation per object is recorded');
+  const violation = result.protectedViolations[0];
+  assert.equal(violation.objectId, 'bowl');
+  assert.equal(violation.stepIndex, 7);
+  assert.equal(violation.worldTimeSeconds, initial.simTime + violation.timeSeconds);
+  const firstChanged = result.trajectory.find(sample => mobileProtectedChange(initial.objects[1], sample.world.objects[1]).violated)!;
+  assert.ok(firstChanged, 'The exact first native violation must be forced into replay, not inferred from a later 10 Hz sample');
+  assert.equal(firstChanged.time, violation.timeSeconds);
+  assert.equal(firstChanged.world.simTime, violation.worldTimeSeconds);
+  const bowl = firstChanged.world.objects[1];
+  assert.deepEqual(violation.position, [bowl.position[0], bowl.height + 0.09, bowl.position[1]]);
+  const recomputed = mobileProtectedChange(initial.objects[1], bowl);
+  assert.equal(violation.displacementMeters, recomputed.displacementMeters);
+  assert.deepEqual(violation.changedFields, recomputed.changedFields);
+  assert.equal(mobileProtectedChange(initial.objects[1], result.finalWorld.objects[1]).violated, false, 'Identical final state cannot erase the latched native violation');
 });
 
 test('a protected-object reach inspection without movement remains allowed and invents no violating action', () => {
@@ -124,6 +141,8 @@ test('a protected-object reach inspection without movement remains allowed and i
   assert.equal(result.failureStepIndex, null);
   assert.equal(result.failedAction, null);
   assert.deepEqual(result.finalWorld.objects[1], world.objects[1]);
+  assert.deepEqual(result.protectedViolations, []);
+  assert.equal(result.protectedObjectPolicy.positionToleranceMeters, 0);
 });
 
 test('a blocked map refuses a declared route without fabricated movement or successful counts', () => {

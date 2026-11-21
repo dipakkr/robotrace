@@ -175,3 +175,67 @@ test('custom assignments reject forged goals and identity reuse, and derive the 
   await assert.rejects(submit(store, changed), error => error.status === 409);
   assert.deepEqual((await store.getAssignment(first.assignment.id)).latestReport, first.report);
 });
+
+const directSave = episode => ({ ...episode, status: 'review', submissionMode: 'operator-save', review: { approved: false, identityVerified: false, source: 'operator-save' } });
+
+test('direct operator save persists recomputed assignment/report without asserting human approval', async t => {
+  const { store, dataDirectory } = await fixture(t);
+  const episode = directSave(episodeFor('lab'));
+  const receipt = await submit(store, episode);
+  assert.equal(episode.status, 'review');
+  assert.equal(receipt.report.accepted, true, 'task geometry can pass without human approval');
+  assert.equal(receipt.report.acceptance.independentlyRecomputed, true);
+  assert.equal(receipt.report.acceptance.replay.matched, true);
+  assert.equal(receipt.report.submissionMode, 'operator-save');
+  assert.deepEqual(receipt.report.review, { approved: false, identityVerified: false, source: 'operator-save' });
+  assert.match(receipt.report.summary, /^Unreviewed record saved:/);
+  assert.equal(receipt.assignment.status, 'submitted');
+  const reopened = createWorkflowStore({ dataDirectory });
+  assert.deepEqual(await reopened.getReport(receipt.report.id), receipt.report);
+  assert.deepEqual((await reopened.getAssignment('lab')).latestReport.review, receipt.report.review);
+});
+
+test('direct operator save retains forged-geometry failure and incomplete-record uncertainty', async t => {
+  const { store } = await fixture(t);
+  const forged = directSave(episodeFor('lab'));
+  forged.samples.at(-1).world.objects[0].position[0] = -.5;
+  const failed = await submit(store, forged);
+  assert.equal(failed.report.accepted, false);
+  assert.equal(failed.report.acceptance.status, 'failed');
+  assert.equal(failed.report.review.approved, false);
+  const incomplete = directSave(episodeFor('lab', { samples: [{ t: 0 }] }));
+  const result = await submit(store, incomplete);
+  assert.equal(result.report.accepted, false);
+  assert.equal(result.report.acceptance.status, 'unverified');
+  assert.match(result.report.summary, /^Unreviewed record saved:/);
+});
+
+test('direct-save marker is exact and cannot assert approved identity or silently fall back to legacy submission', async t => {
+  const { store } = await fixture(t);
+  for (const override of [
+    { status: 'approved' }, { submissionMode: undefined }, { submissionMode: 'auto-approved' }, { review: undefined },
+    { review: { approved: true, identityVerified: false, source: 'operator-save' } },
+    { review: { approved: false, identityVerified: true, source: 'operator-save' } },
+    { review: { approved: false, identityVerified: false, source: 'operator-save', reviewer: 'inferred' } },
+  ]) {
+    await assert.rejects(submit(store, { ...directSave(episodeFor('lab')), ...override }), error => error.status === 400);
+  }
+  assert.equal((await store.getAssignment('lab')).status, 'assigned');
+  assert.equal(await submit(store, episodeFor('lab', { status: 'review' })), null, 'legacy unmarked review remains a raw recording');
+  const legacy = await submit(store, episodeFor('lab'));
+  assert.equal(legacy.report.accepted, true);
+  assert.match(legacy.report.summary, /^Reviewed /);
+});
+
+test('direct operator-save authored scene retains its exact custom task identity and provenance', async t => {
+  const { store } = await fixture(t);
+  const episode = directSave(customEpisode());
+  const result = await submit(store, episode);
+  assert.equal(result.assignment.id, episode.initialWorld.customTask.id);
+  assert.equal(result.report.accepted, true);
+  assert.equal(result.report.review.approved, false);
+  assert.equal(result.report.sourceKind, 'unreviewed-ai-assisted-scene');
+  assert.equal(result.report.provenance.review, 'unreviewed');
+  assert.equal(result.assignment.provenance.review, 'unreviewed');
+  assert.ok(!JSON.stringify(result.report).includes('operator-reviewed'));
+});

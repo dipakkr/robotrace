@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { advanceWorld, planCommand } from './engine';
 import type { ActionStep, WorldState } from './engine';
 import { getEnvironment } from './environments';
+import { WORKPLACE_CASES } from './workplace-cases';
 
 function execute(source: WorldState, steps: ActionStep[]): WorldState {
   let world = source;
@@ -117,4 +118,36 @@ test('color selection uses scene colors even when generated IDs have no color to
  const world=getEnvironment('kitchen').world();world.objects[0].id='cup-1';world.objects[1].id='cup-2';world.objects[2].id='reserved-vessel';
  const blue=planCommand('Move blue to Serving tray',world);assert.equal(blue.error,undefined);assert.deepEqual(blue.steps.map(s=>s.objectId),['cup-2']);
  const filtered=planCommand('Move all except green to Serving tray',world);assert.equal(filtered.error,undefined);assert.deepEqual(filtered.steps.map(s=>s.objectId),['cup-1','cup-2']);
+});
+
+test('plural cup follow-ups distinguish a known source from the destination and execute both real placements', () => {
+  const story = WORKPLACE_CASES.find(item => item.id === 'after-meal')!;
+  const initial = story.world;
+  const collected = execute(initial, planCommand(story.instruction, initial).steps);
+  for (const instruction of ['Move all cups from sink to drying rack', 'Transfer cups from the Sink rack into the Drying rack']) {
+    const plan = planCommand(instruction, collected);
+    assert.equal(plan.error, undefined, instruction);
+    assert.deepEqual(plan.steps.map(step => [step.objectId, step.destination]), [['used-cup-red', 'tray-b'], ['used-cup-blue', 'tray-b']]);
+    const final = execute(collected, plan.steps);
+    assert.ok(final.objects.filter(object => object.semanticType === 'cup').every(object => object.location === 'tray-b'));
+    assert.deepEqual(final.objects[2], initial.objects[2]);
+    const repeated = planCommand(instruction, final);
+    assert.equal(repeated.steps.length, 0);
+    assert.match(repeated.error!, /No matching cups.*Sink rack/);
+  }
+});
+
+test('empty or unknown sources, protected references and unknown extra nouns never start partial follow-ups', () => {
+  const story = WORKPLACE_CASES.find(item => item.id === 'after-meal')!;
+  const initial = story.world;
+  assert.match(planCommand('Move all cups from sink to drying rack', initial).error!, /No matching cups/);
+  const collected = execute(initial, planCommand(story.instruction, initial).steps);
+  for (const instruction of ['Move cups from fridge to drying rack', 'Move Reserved serving bowl to drying rack', 'Move all cups from sink to drying rack and cupboard']) {
+    const plan = planCommand(instruction, collected);
+    assert.ok(plan.error, instruction); assert.equal(plan.steps.length, 0, instruction);
+  }
+  const singular = planCommand('Move cup from sink to drying rack', collected);
+  assert.equal(singular.steps.length, 0); assert.match(singular.error!, /matching objects/);
+  const red = planCommand('Move the red cup from sink to drying rack', collected);
+  assert.equal(red.error, undefined); assert.deepEqual(red.steps.map(step => step.objectId), ['used-cup-red']);
 });

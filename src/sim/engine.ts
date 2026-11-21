@@ -167,8 +167,26 @@ export function planCommand(text: string, world: WorldState): CommandPlan {
     return buildPlan(assignments as { object: SceneObject; target: DestinationId }[]);
   }
 
+  const locationAliases: [DestinationId, string][] = [
+    ['tray-a', 'tray a'], ['tray-a', 'bin a'], ['tray-b', 'tray b'], ['tray-b', 'bin b'],
+    ['reject', 'review'], ['reject', 'reject'], ['table', 'table'], ['table', 'worktable'],
+  ];
+  for (const [id, label] of Object.entries(world.destinationLabels ?? {})) {
+    locationAliases.push([id as DestinationId, label.toLowerCase()]);
+    const shortened = label.toLowerCase().replace(/\s+(?:rack|tray|bin)$/, '');
+    if (shortened !== label.toLowerCase()) locationAliases.push([id as DestinationId, shortened]);
+    if (id === 'table' && /\bcounter\b/i.test(label)) locationAliases.push(['table', 'counter']);
+  }
+  const sourcePhrase = command.match(/\bfrom\s+(?:the\s+)?(.+?)(?=\s+(?:to|into|onto|back\s+to)\b)/);
+  let sourceLocation: DestinationId | undefined;
+  let scopedCommand = command;
+  if (sourcePhrase) {
+    const sources = [...new Set(locationAliases.filter(([, label]) => label === sourcePhrase[1].trim()).map(([id]) => id))];
+    if (sources.length !== 1) return { ...base, summary: 'Please name one known source.', error: `The source “${sourcePhrase[1]}” is unknown or ambiguous. Use a visible rack, tray or table label.` };
+    sourceLocation = sources[0]; scopedCommand = command.replace(sourcePhrase[0], ' ');
+  }
   const aliases = [...new Set(world.objects.flatMap(object => [object.id.toLowerCase(), object.label.toLowerCase()]))].sort((a, b) => b.length - a.length);
-  let unnamedCommand = command;
+  let unnamedCommand = scopedCommand;
   const namedObjects: SceneObject[] = [];
   for (const alias of aliases) {
     if (!phrasePattern(alias).test(unnamedCommand)) continue;
@@ -185,7 +203,10 @@ export function planCommand(text: string, world: WorldState): CommandPlan {
   const requestedColors = colorNames.filter(color => new RegExp(`\\b${color}\\b`).test(unnamedCommand));
   const isSort = /\bsort\b/.test(command);
   const allRequested = /\b(all|everything|every|prepare|pack|collect|clear)\b/.test(command) || isSort;
-  const available = world.objects.filter(object => object.status !== 'in-transit');
+  const objectTypes = [...new Set([...unnamedCommand.matchAll(/\b(cups?|bowls?)\b/g)].map(match => match[1].replace(/s$/, '')))];
+  const available = world.objects.filter(object => object.status !== 'in-transit'
+    && (sourceLocation === undefined || object.location === sourceLocation)
+    && (!objectTypes.length || objectTypes.includes(object.semanticType ?? '')));
   let selected: SceneObject[] = namedObjects.filter(object => object.status !== 'in-transit');
   if (requestedColors.length) {
     for (const color of requestedColors) {
@@ -201,12 +222,16 @@ export function planCommand(text: string, world: WorldState): CommandPlan {
         selected.push(...matching);
       }
     }
-  } else if (allRequested && !namedObjects.length) selected = available;
+  } else if ((allRequested || objectTypes.length) && !namedObjects.length) selected = available;
   selected = [...new Map(selected.map(object => [object.id, object])).values()];
   // Leaving an explicitly mentioned object is supported without guessing.
   const leaveMatch = command.match(/\b(?:leave|except|excluding|skip)\s+(?:the\s+)?(red|blue|green)\b/);
   if (leaveMatch) selected = (allRequested ? available : selected).filter(object => !hasColor(object, leaveMatch[1]));
-  if (!selected.length) return { ...base, summary: 'I need a known object to plan the motion.', error: `Choose an object in this scene: ${available.map(object => object.label).join(', ')}. You can also ask to sort all parts.` };
+  if (!selected.length) return { ...base, summary: 'No matching objects at the requested source.', error: sourceLocation !== undefined ? `No matching ${objectTypes.length ? objectTypes.join(' or ') + 's' : 'objects'} are currently at ${destinationName(sourceLocation)}. No motion was planned.` : `Choose an object in this scene: ${available.map(object => object.label).join(', ')}. You can also ask to sort all parts.` };
+  if (sourceLocation !== undefined && selected.some(object => object.location !== sourceLocation)) return { ...base, summary: 'The stated source does not match the selected objects.', error: `The selected objects are not all at ${destinationName(sourceLocation)}. No partial action was planned.` };
+  if (objectTypes.length && selected.length > 1 && !allRequested && !/\b(?:cups|bowls)\b/.test(command)) return { ...base, summary: 'Please identify one object.', error: `There are ${selected.length} matching objects. Say “all ${objectTypes.join(' or ')}s” or use an exact visible object label.` };
+  const protectedIds = new Set(world.customTask?.assignments.filter(target => target.unchanged).map(target => target.objectId) ?? (world.environmentId === 'lab' ? ['part-green'] : []));
+  if (selected.some(object => protectedIds.has(object.id))) return { ...base, summary: 'The request selects a protected reference.', error: `Keep ${selected.filter(object => protectedIds.has(object.id)).map(object => object.label).join(', ')} untouched. This scene explicitly protects that object; no partial motion was planned.` };
 
   let destination: DestinationId | undefined;
   const destinationPatterns: [DestinationId, RegExp][] = [
@@ -215,12 +240,12 @@ export function planCommand(text: string, world: WorldState): CommandPlan {
     ['reject', /\b(reject|review|quarantine|damaged)\b/g],
     ['table', /\b(?:to|onto|on|back\s+to)\s+(?:the\s+)?(?:table|worktable|original)\b/g],
   ];
-  for (const [id, label] of Object.entries(world.destinationLabels ?? {})) {
+  for (const [id, label] of locationAliases) {
     // A tabletop label can also describe the source; require a placement preposition.
-    const pattern = id === 'table' ? new RegExp(`\\b(?:to|onto|on|back to)\\s+(?:the\\s+)?${label.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g') : phrasePattern(label);
+    const pattern = new RegExp(`\\b(?:to|into|onto|in|on|back to)\\s+(?:the\\s+)?${label.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
     destinationPatterns.push([id as DestinationId, pattern]);
   }
-  const destinations = [...new Set(destinationPatterns.filter(([, pattern]) => pattern.test(command)).map(([id]) => id))];
+  const destinations = [...new Set(destinationPatterns.filter(([, pattern]) => pattern.test(scopedCommand)).map(([id]) => id))];
   if (destinations.length > 1) return { ...base, summary: 'Please clarify the object-to-destination assignment.', error: 'This command names multiple destinations. Give one destination per command, or use the environment’s named assignment.' };
   destination = destinations[0];
   if (!destination && !isSort) return { ...base, summary: 'Please choose a destination.', error: `Which destination: ${destinationName('tray-a')}, ${destinationName('tray-b')}, or ${destinationName('reject')}?` };
@@ -229,6 +254,7 @@ export function planCommand(text: string, world: WorldState): CommandPlan {
   let ungrounded = unnamedCommand;
   for (const [, pattern] of destinationPatterns) { pattern.lastIndex = 0; ungrounded = ungrounded.replace(pattern, ' '); }
   ungrounded = ungrounded.replace(/\b(red|blue|green)(?:\s+(?:blocks?|parts?|cubes?)(?:\s+\d+)?)?\b/g, ' ')
+    .replace(/\b(?:cups?|bowls?)\b/g, ' ')
     .replace(/\b(move|put|place|transfer|take|bring|send|return|sort|prepare|pack|collect|clear|all|everything|every|parts?|objects?|blocks?|cubes?|the|a|an|and|to|into|onto|on|in|from|back|please|can|could|you|robot|tray|table|worktable|counter|leave|except|excluding|skip)\b/g, ' ')
     .replace(/[\s,.!?;:]/g, '');
   if (ungrounded) return { ...base, summary: 'The request contains an unknown object or action.', error: 'Use the object labels and destination labels visible in this scene, or its named assignment. No partial action was planned.' };

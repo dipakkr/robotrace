@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { analyzeProtectedInput } from './protected-analysis-core.mjs';
+import { renderTraceViewer } from './build-trace-viewer.mjs';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_SAMPLES = 20000;
@@ -202,23 +204,51 @@ export async function runConsumer({ args = process.argv.slice(2), write = consol
     require(information.isFile() && information.size <= MAX_FILE_BYTES, 'Input must be a regular evidence file of at most 50 MiB.');
     const raw = await readFile(input, 'utf8');
     require(Buffer.byteLength(raw) <= MAX_FILE_BYTES, 'Input exceeds 50 MiB.');
-    const result = consumeEvidence(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    const protectedOnly = ['teachtrace.mobile-matched-pair.v1', 'teachtrace.mobile-candidate-result.v1', 'teachtrace.mobile-planner-report.v1'].includes(parsed?.schema);
+    if (protectedOnly) {
+      const analysis = await analyzeProtectedInput(parsed);
+      const manifest = { schema: 'teachtrace.protected-analysis-manifest.v1', sourceSchema: parsed.schema,
+        inputDigestSha256: analysis.inputDigestSha256, integrityVerified: analysis.integrityVerified,
+        protectedObjectHistoryRecomputed: true, sourceTaskChecksRecomputed: false, sourceAuthorshipVerified: false,
+        pair: analysis.pair, policy: analysis.policy,
+        runs: analysis.runs.map(run => ({ id: run.id, sampleCount: run.sampleCount, protectedObjectsPassed: run.protectedObjectsPassed })),
+        trainingPerformed: false, physicalTransferValidated: false };
+      if (args.length === 3) await writeAnalysisOutput(args[2], [
+        ['protected-analysis.json', JSON.stringify(analysis, null, 2) + '\n'],
+        ['manifest.json', JSON.stringify(manifest, null, 2) + '\n'],
+        ['report.html', await renderTraceViewer(parsed)],
+      ]);
+      write(`Independently analyzed ${analysis.runs.length} recorded attempts: ${analysis.runs.filter(run => run.protectedObjectsPassed).length} preserve protected history; ${analysis.runs.filter(run => !run.protectedObjectsPassed).length} violate it.`);
+      write(args.length === 3 ? 'Wrote protected-analysis.json, manifest.json and self-contained report.html. No network, simulator or training operation was performed.' : 'Inspection only. Add --out DIR to write the independent report.');
+      return 0;
+    }
+    const result = consumeEvidence(parsed);
+    const goal = parsed?.payload?.finalWorld?.mission?.plan?.goal;
+    const protection = parsed?.payload?.schema === 'teachtrace.mobile-evaluation.v1' && ['cup', 'bowl'].includes(goal?.objectId)
+      ? await analyzeProtectedInput(parsed) : null;
     if (args.length === 3) {
-      const directory = resolve(args[2]); await mkdir(directory, { recursive: true, mode: 0o700 });
-      const created = [];
-      try {
-        for (const [name, contents] of [['analysis.jsonl', result.rows.map(row => JSON.stringify(row)).join('\n') + '\n'], ['manifest.json', JSON.stringify(result.manifest, null, 2) + '\n']]) {
-          const destination = resolve(directory, name); await writeFile(destination, contents, { flag: 'wx', mode: 0o600 }); created.push(destination);
-        }
-      } catch { await Promise.all(created.map(path => rm(path, { force: true }))); throw new Error('Output could not be written; use a writable directory without existing analysis.jsonl or manifest.json.'); }
+      const files = [['analysis.jsonl', result.rows.map(row => JSON.stringify(row)).join('\n') + '\n'], ['manifest.json', JSON.stringify(result.manifest, null, 2) + '\n']];
+      if (protection) files.push(['protected-analysis.json', JSON.stringify(protection, null, 2) + '\n'], ['report.html', await renderTraceViewer(parsed)]);
+      await writeAnalysisOutput(args[2], files);
     }
     write(`Verified ${result.manifest.sourceSchema}: ${result.manifest.counts.recordedSamples} observations, ${result.manifest.counts.positiveDtPairs} positive-dt pairs, ${result.manifest.counts.sameClockPairsExcluded} same-clock pairs excluded; outcome ${result.manifest.terminalOutcome}.`);
-    write(args.length === 3 ? 'Wrote analysis.jsonl and manifest.json. No network or training operation was performed.' : 'Inspection only. Add --out DIR to write the state-analysis handoff.');
+    write(args.length === 3 ? `Wrote analysis.jsonl and manifest.json${protection ? ', protected-analysis.json and standalone report.html' : ''}. No network or training operation was performed.` : 'Inspection only. Add --out DIR to write the state-analysis handoff.');
     return 0;
   } catch (error) {
     write(error instanceof SyntaxError ? 'Input is not valid evidence JSON.' : error?.code ? 'Evidence file access failed. Check the input path and permissions.' : error.message);
     return 1;
   }
+}
+
+async function writeAnalysisOutput(output, files) {
+  const directory = resolve(output); await mkdir(directory, { recursive: true, mode: 0o700 });
+  const created = [];
+  try {
+    for (const [name, contents] of files) {
+      const destination = resolve(directory, name); await writeFile(destination, contents, { flag: 'wx', mode: 0o600 }); created.push(destination);
+    }
+  } catch { await Promise.all(created.map(path => rm(path, { force: true }))); throw new Error('Output could not be written; use a writable directory without existing analysis outputs or manifest.json.'); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) process.exitCode = await runConsumer();

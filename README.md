@@ -2,10 +2,11 @@
 
 **A voice-operated task and evidence console for a household robotics team.**
 
-A robotics data or evaluation engineer specifies a task, reviews the robot's
-plan, observes the simulated attempt, and saves a checked record. TeachTrace
+A robotics data or evaluation engineer specifies a task, observes its plan and
+execution in an activity terminal, and saves a checked record. TeachTrace
 runs on a laptop without robot hardware. Its output is a reproducible scene,
-observed states, failures and a reviewed report for the team.
+observed states, failures and a report for the team. Saved records remain
+unreviewed unless a separate human quality review is actually performed.
 
 ## Run locally
 
@@ -31,30 +32,41 @@ ignored `.local/`. A new callback tunnel updates only `PUBLIC_API_BASE_URL` in
 `.env.local`. For simulator use without a tunnel, run `npm run server` and
 `npm run dev -- --host 127.0.0.1 --port 5189 --strictPort` in separate terminals.
 
-## The main demo: voice → robot attempt → reviewed report
+## The main demo: voice → live activity → checked evidence
 
 1. Open **Mobile kitchen**, connect voice and say **“Take cup from counter to
    sink.”** The cup begins 5.15 m away, beyond the 1.35 m stationary arm reach.
-2. Review five explicit steps: navigate to Counter, recheck reach, collect Cup,
-   navigate to Sink, and place Cup. Approve manually or use the cancellable
-   three-second countdown for reversible simulation motion.
+2. The command runs immediately: navigate to Counter, recheck reach, collect Cup,
+   navigate to Sink, and place Cup. The compact green activity terminal records
+   the actual context, plan, current action and results; yellow marks warnings
+   and red marks failures. There are no task approval tabs or countdowns.
 3. Observe actual base travel and carried-object movement. **Human enters →
    Clear human → Resume** tests a software obstruction; clearance alone does
    not resume the mission. Completion requires actual docking and delivery checks.
-4. In **Review**, choose **Review & save mobile evidence**, inspect the frozen
-   recording, then explicitly **Approve & save mobile evidence**. The local API
-   verifies integrity and recorded geometry/history, saves the native record,
-   and returns a service report. Approval preserves stopped/failed outcomes.
+4. Click **Save mobile evidence** once. The local API verifies integrity and
+   recorded geometry/history, saves the native record and returns a report.
+   Its review status stays **Unreviewed**; failed/stopped outcomes are preserved.
 5. Open **Saved recordings → Open mobile recording**. The application verifies
    its SHA-256 and shows read-only replay. Scrub the actual states, export the
    recording, then **Return to live kitchen**; the live world is preserved.
 
-The combined real-provider rehearsal passed: prerecorded voice → five actual
+The earlier combined real-provider rehearsal passed: prerecorded voice → five actual
 steps → explicit review → HTTP 201 save → factual spoken report. A fresh browser
 reopened that exact record, replayed and reexported it; the standalone consumer
 verified its seal and kinematics. See [validation](docs/VALIDATION.md) and the
 [labelled backup video](.local/qa/final-workflow/teachtrace-voice-workflow.mp4).
-A saved report is local persistence, not an upload to a robotics lab.
+A saved report is local persistence, not an upload to a robotics lab. That
+recording uses the historical approval UI; the current interface executes
+immediately. The new [90-second simulation recording](.local/qa/simulation-video/teachtrace-simulation-walkthrough.mp4)
+shows immediate local commands, interruption, direct save, matched regression
+and independent trace analysis. It uses typed commands, not a live voice session.
+
+Open **AI deployment checks → Run matched regression pair**. Both authored
+plans deliver Cup to Sink; the Bowl round trip fails despite restoring its
+exact final state. **Download comparison**, open [Trace analysis](http://127.0.0.1:5189/trace-analysis.html)
+and load that export. The independent consumer plots the real displacement and
+first recorded violation. Its downloaded HTML works offline. See the
+[regression workflow](docs/REGRESSION_WORKFLOW.md).
 
 **Compare fixed vs mobile reach** holds the initial scene, target, reach and
 handling controller constant while removing navigation from the stationary
@@ -73,7 +85,7 @@ parking as an object delivery or invents a placement.
 second complete workflow: **“Clear the after-meal counter”** moves two used cups
 to the Sink rack while leaving the reserved bowl untouched. This is rack loading,
 not dishwashing. Repair and sample-routing environments also have retrievable
-locally authored SOPs and assigned tasks. Reviewed workcell submission stores an
+locally authored SOPs and assigned tasks. One-click workcell saving stores an
 episode, updates its local assignment and creates a persistent report.
 
 Text, a photo or one selected video frame can propose a supported scene for

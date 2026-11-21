@@ -85,9 +85,10 @@ function sameArm(provided, expected) {
 }
 
 async function verifyAndReport(envelope, review, id, savedAt) {
-  if (!exact(review, ['approved', 'identityVerified']) || review.approved !== true || review.identityVerified !== false) {
-    throw fail('Explicit human review with approved:true and identityVerified:false is required.');
-  }
+  const reviewed = exact(review, ['approved', 'identityVerified']) && review.approved === true && review.identityVerified === false;
+  const operatorSave = exact(review, ['approved', 'identityVerified', 'source']) && review.approved === false && review.identityVerified === false && review.source === 'operator-save';
+  if (!reviewed && !operatorSave) throw fail('Provide explicit review provenance or an unreviewed operator-save record; reviewer identity cannot be asserted.');
+  const savedReview = reviewed ? { approved: true, identityVerified: false } : { approved: false, identityVerified: false, source: 'operator-save' };
   let raw;
   try { raw = JSON.stringify(envelope); } catch { throw fail('Provide a bounded JSON mobile evidence envelope.'); }
   if (typeof raw !== 'string' || Buffer.byteLength(raw) > MAX_BYTES || !finiteJSON(envelope)) throw fail('Mobile evidence must contain finite JSON of at most 1 MiB.');
@@ -164,17 +165,17 @@ async function verifyAndReport(envelope, review, id, savedAt) {
     schema: 'teachtrace.mobile-service-report.v1', id, episodeId: id, savedAt, createdAt: savedAt,
     assignmentId: 'TT-MOBILE-KITCHEN-001', title: `Mobile kitchen: ${mission.plan.command}`, command: mission.plan.command, goal: { ...declared.goal },
     accepted, taskAccepted: accepted, outcome, checks,
-    summary: `Reviewed mobile attempt saved. Recorded outcome: ${outcome}. Task acceptance: ${accepted ? 'passed' : 'not accepted'}. ${accepted ? declared.goal.objectId ? 'The recorded final station, delivery and protected-object checks passed.' : `The recorded navigation destination${navigationCargoId ? ', preserved cargo custody' : ''} and protected-object checks passed. No object delivery is asserted.` : 'Inspect the recorded attempt and failed checks before preparing a corrected task.'}`,
+    summary: `${reviewed ? 'Reviewed' : 'Unreviewed'} mobile attempt saved. Recorded outcome: ${outcome}. Task acceptance: ${accepted ? 'passed' : 'not accepted'}. ${accepted ? declared.goal.objectId ? 'The recorded final station, delivery and protected-object checks passed.' : `The recorded navigation destination${navigationCargoId ? ', preserved cargo custody' : ''} and protected-object checks passed. No object delivery is asserted.` : 'Inspect the recorded attempt and failed checks before preparing a corrected task.'}`,
     metrics: { sampleCount: samples.length, distanceTravelled, durationSeconds, completedPickups: observedPickups, completedPlacements: observedPlacements, recordedCompletedSteps: mission.completedSteps },
     basis: 'independentlyrecomputed-recorded-simulator-state', independentlyRecomputed: true, motionReplayed: false,
-    sourceHash: evidence.integrity.digest, sourceKind: 'locally-authored-mobile-simulation', review: { approved: true, identityVerified: false },
+    sourceHash: evidence.integrity.digest, sourceKind: 'locally-authored-mobile-simulation', review: savedReview,
     provenance: reconstructed.provenance, postedReceiptUsedForAcceptance: false, boundaries: boundary,
     followUp: accepted ? 'Inspect and export this native simulation record for the robotics QA team.' : 'Review the failure evidence and collect a corrected or completed attempt.',
   };
-  return { schema: 'teachtrace.saved-mobile-evidence.v1', id, savedAt, title: report.title, review: { approved: true, identityVerified: false }, report, evidence };
+  return { schema: 'teachtrace.saved-mobile-evidence.v1', id, savedAt, title: report.title, review: savedReview, report, evidence };
 }
 
-/** Private local files only; the caller must expose saving through explicit human review. */
+/** Local records retain review provenance independently of recomputed task acceptance. */
 export function createMobileEvidenceStore({ dataDirectory, fs = fileSystem } = {}) {
   if (!text(dataDirectory, 4096)) throw new Error('A local mobile evidence data directory is required.');
   const directory = resolve(dataDirectory, '.mobile');

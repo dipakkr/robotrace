@@ -190,13 +190,13 @@ export function mobileObjectReach(world: MobileWorld, objectId: string): { dista
   return { distance: measured, armReach: world.robot.armReach, reachable: measured <= world.robot.armReach };
 }
 
-export function startMobilePlan(source: MobileWorld, plan: MobilePlan, approvalSource: 'manual' | 'automatic' | 'evaluation' = 'manual'): MobileAdvanceResult {
+export function startMobilePlan(source: MobileWorld, plan: MobilePlan, approvalSource: 'manual' | 'automatic' | 'evaluation' | 'immediate' = 'manual'): MobileAdvanceResult {
   if (plan.error || plan.control || !plan.goal || !plan.steps.length || plan.worldRevision !== source.revision
     || ['running', 'paused'].includes(source.robot.mode)) return { world: source, done: false, error: 'The mobile plan is invalid, stale, or another mission is active. Prepare a fresh plan before approval.' };
   const world = copy(source);
   world.mission = { plan: structuredClone(plan), stepIndex: 0, waypointIndex: 1, phaseElapsed: 0, completedSteps: 0, status: 'running' };
   world.robot.mode = 'running'; world.robot.phase = plan.steps[0].label;
-  event(world, 'control', approvalSource === 'automatic' ? 'Reversible simulation task automatically approved after the visible cancellation window.' : approvalSource === 'evaluation' ? 'Evaluation controller started the submitted candidate; no human approval is asserted.' : 'Operator explicitly approved the mobile task.');
+  event(world, 'control', approvalSource === 'immediate' ? 'Operator command started immediate local simulation; no separate approval or cancellation window.' : approvalSource === 'automatic' ? 'Reversible simulation task automatically approved after the visible cancellation window.' : approvalSource === 'evaluation' ? 'Evaluation controller started the submitted candidate; no human approval is asserted.' : 'Operator explicitly approved the mobile task.');
   return { world, done: false };
 }
 

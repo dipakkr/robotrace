@@ -163,7 +163,7 @@ async function spawnOwned(kind, runtime) {
     executable = runtime.cloudflared;
     for (const key of Object.keys(childEnv)) if (key.startsWith('TUNNEL_')) delete childEnv[key];
     await writeFile(CONFIG, '{}\n', { mode: 0o600 });
-    args = ['tunnel', '--config', CONFIG, '--url', 'http://127.0.0.1:8788', '--no-autoupdate', '--loglevel', 'info', '--transport-loglevel', 'warn', '--metrics', '127.0.0.1:0', '--grace-period', '2s'];
+    args = ['tunnel', '--config', CONFIG, '--url', 'http://127.0.0.1:8788', '--protocol', 'http2', '--no-autoupdate', '--loglevel', 'info', '--transport-loglevel', 'warn', '--metrics', '127.0.0.1:0', '--grace-period', '2s'];
   }
   const log = await open(resolve(LOCAL, services[kind].log), kind === 'tunnel' ? 'w' : 'a', 0o600);
   let child;

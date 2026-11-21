@@ -69,14 +69,14 @@ test('unknown and custom scenes use generic explicit-destination rules without i
   }
 });
 
-test('all guides identify local sample provenance, approval gates, and simulation limits', () => {
+test('all guides identify local sample provenance, immediate commands, and simulation limits', () => {
   for (const id of ['workbench', 'kitchen', 'lab', 'custom']) {
     const guide = taskGuideForEnvironment(id);
     assert.equal(guide.source, 'TeachTrace demo collection SOP');
     assert.equal(guide.sourceKind, 'locally-authored-sample');
     assert.equal(guide.revision, '1.0');
-    assert.match(guide.instructions, /operator approval before execution/);
-    assert.match(guide.instructions, /episode review and approval to the human collector/);
+    assert.match(guide.instructions, /starts without approval or a countdown/);
+    assert.match(guide.instructions, /saved evidence remains unreviewed/);
     assert.match(guide.boundaries, /idealized kinematic simulator/);
     assert.match(guide.boundaries, /Never claim physical robustness/);
     assert.ok(guide.acceptance.every(rule => typeof rule === 'string' && rule.length > 0));
@@ -102,6 +102,17 @@ export function customWorld(id = 'custom-11111111-1111-4111-8111-111111111111', 
     sceneProvenance: { source: 'ai-draft', model: 'test-model', prompt: 'Not copied into SOP', referenceImage: 'not-copied' },
   };
 }
+
+test('follow-up tasks may preserve an unrequested tray reference only at its actual initial location', () => {
+  const world = customWorld();
+  world.objects[1].location = 'tray-b'; world.customTask.assignments[1].destination = 'tray-b';
+  const guide = taskGuideForWorld(world);
+  assert.equal(guide.id, world.customTask.id);
+  assert.equal(guide.assignments[1].unchanged, true);
+  assert.equal(guide.assignments[1].destination, 'tray-b');
+  world.customTask.assignments[1].destination = 'tray-a';
+  assert.notEqual(taskGuideForWorld(world).id, world.customTask.id);
+});
 
 test('authored scene SOP derives its identity and semantic goals from the reviewed world', () => {
   const world = customWorld();
@@ -231,12 +242,13 @@ test('malformed or forged mobile telemetry cannot fall back to a tabletop or exe
   assert.equal(taskGuideForEnvironment('mobile-kitchen').id, 'TT-MOBILE-UNVERIFIED');
 });
 
-test('all executable SOPs describe conditional automatic approval and explicit evidence review', () => {
+test('all executable SOPs describe immediate local execution and truthful unreviewed evidence saving', () => {
   const procedures = ['workbench', 'kitchen', 'lab'].map(taskGuideForEnvironment);
   procedures.push(taskGuideForWorld(customWorld()));
   for (const guide of procedures) {
-    assert.match(guide.instructions, /cancellable three-second/);
-    assert.match(guide.instructions, /plan.confirmationRequired is true/);
-    assert.match(guide.instructions, /Scene replacement, reset, and evidence.*never use automatic approval/);
+    assert.match(guide.instructions, /starts without approval or a countdown/);
+    assert.match(guide.instructions, /activity terminal/);
+    assert.match(guide.instructions, /saved evidence remains unreviewed/);
+    assert.match(guide.instructions, /running receipt is not completion/);
   }
 });

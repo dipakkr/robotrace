@@ -1,5 +1,6 @@
 import { advanceMobileWorld, mobileGoalChecks, mobileSegmentIsClear, findMobileRoute, startMobilePlan } from './mobile-navigation';
 import type { MobileGoalCheck, MobilePlan, MobileStationId, MobileStep, MobileWorld } from './mobile-navigation';
+import { MOBILE_PROTECTED_POLICY, mobileProtectedChange } from '../data/mobile-protected-policy.mjs';
 
 export type MobileCandidateAction =
   | { skill: 'navigate'; station: MobileStationId }
@@ -52,8 +53,19 @@ export interface MobileCandidateResult {
   initialWorld: MobileWorld;
   finalWorld: MobileWorld;
   trajectory: { time: number; world: MobileWorld }[];
+  protectedObjectPolicy: typeof MOBILE_PROTECTED_POLICY;
+  protectedViolations: MobileProtectedViolation[];
   executionBudget: { maxTicks: number; dt: number; maxSamples: number };
   limitations: string[];
+}
+export interface MobileProtectedViolation {
+  objectId: string;
+  timeSeconds: number;
+  worldTimeSeconds: number;
+  stepIndex: number;
+  position: [number, number, number] | null;
+  displacementMeters: number | null;
+  changedFields: string[];
 }
 
 export const DEFAULT_MOBILE_CANDIDATE_GOAL: Readonly<MobileCandidateGoal> = Object.freeze({ objectId: 'cup', stationId: 'sink' });
@@ -202,15 +214,23 @@ export function evaluateMobileCandidate(input: MobileCandidateInput): MobileCand
   let ticks = 0;
   let executedPlanId: string | null = null;
   const disturbedObjects = new Map<string, number>();
+  const protectedViolations: MobileProtectedViolation[] = [];
   const trajectory: MobileCandidateResult['trajectory'] = [{ time: 0, world: clone(initialWorld) }];
+  const reservedSamples = new Set([trajectory[0]]);
   let nextSample = 0.1;
-  const sample = (force = false) => {
+  const sample = (force = false, preserve = false) => {
     const time = world.simTime - initialWorld.simTime;
     if (!force && time + EPSILON < nextSample) return;
     const previous = trajectory.at(-1)!;
-    if (force && previous.time === time && same(previous.world, world)) return;
-    if (trajectory.length < MAX_SAMPLES) trajectory.push({ time, world: clone(world) });
-    else if (force) trajectory[MAX_SAMPLES - 1] = { time, world: clone(world) };
+    if (force && previous.time === time && same(previous.world, world)) { if (preserve) reservedSamples.add(previous); return; }
+    const entry = { time, world: clone(world) };
+    if (trajectory.length < MAX_SAMPLES) trajectory.push(entry);
+    else if (force) {
+      let replace = trajectory.length - 1;
+      while (replace > 0 && reservedSamples.has(trajectory[replace])) replace--;
+      trajectory.splice(replace, 1); trajectory.push(entry);
+    }
+    if (preserve) reservedSamples.add(entry);
     nextSample = Math.floor((time + EPSILON) * 10) / 10 + 0.1;
   };
 
@@ -236,10 +256,14 @@ export function evaluateMobileCandidate(input: MobileCandidateInput): MobileCand
           const result = advanceMobileWorld(world, DT);
           ticks++;
           world = result.world;
+          let firstProtectedViolation = false;
           // Observe each native tick, including partial handling, rather than relying on
           // a final pose or the lower-frequency replay to prove an object stayed untouched.
           for (const object of initialWorld.objects.filter(object => object.id !== goal.objectId)) {
-            if (!disturbedObjects.has(object.id) && !same(world.objects.find(current => current.id === object.id), object)) {
+            if (disturbedObjects.has(object.id)) continue;
+            const current = world.objects.find(current => current.id === object.id);
+            const change = mobileProtectedChange(object, current);
+            if (change.violated) {
               // One native tick can finish a reach check and begin a pickup. Attribute
               // that first actual state change to the handling action, not the prior check.
               const end = Math.min(world.mission?.stepIndex ?? index, candidate.actions.length - 1);
@@ -249,10 +273,14 @@ export function evaluateMobileCandidate(input: MobileCandidateInput): MobileCand
                 if ((action.skill === 'pickup' || action.skill === 'place') && action.objectId === object.id) { cause = stepIndex; break; }
               }
               disturbedObjects.set(object.id, cause);
+              protectedViolations.push({ objectId: object.id, timeSeconds: world.simTime - initialWorld.simTime, worldTimeSeconds: world.simTime, stepIndex: cause,
+                position: current ? [current.position[0], current.height + MOBILE_PROTECTED_POLICY.heightOffsetMeters, current.position[1]] : null,
+                displacementMeters: change.displacementMeters, changedFields: [...change.changedFields] });
+              firstProtectedViolation = true;
             }
           }
           const newControl = world.events.slice(previousEvents).some(event => event.kind === 'control' || event.kind === 'blocked');
-          sample(Boolean(result.done || result.error || result.blocked || newControl || world.mission?.stepIndex !== index));
+          sample(Boolean(firstProtectedViolation || result.done || result.error || result.blocked || newControl || world.mission?.stepIndex !== index), firstProtectedViolation);
           if (result.blocked || result.error) {
             outcome = result.blocked ? 'blocked' : 'failed';
             error = result.blocked ?? result.error;
@@ -276,7 +304,7 @@ export function evaluateMobileCandidate(input: MobileCandidateInput): MobileCand
   const checks = mobileGoalChecks(checkingWorld);
   for (const object of initialWorld.objects.filter(object => object.id !== goal.objectId)) {
     const current = world.objects.find(item => item.id === object.id);
-    checks.push({ id: `protected-${object.id}`, name: `${object.label} remains undisturbed`, passed: Boolean(current && same(current, object) && !disturbedObjects.has(object.id)),
+    checks.push({ id: `protected-${object.id}`, name: `${object.label} remains undisturbed`, passed: Boolean(current && !mobileProtectedChange(object, current).violated && !disturbedObjects.has(object.id)),
       detail: 'Every unrequested object must retain its complete frozen initial state throughout execution, including partial handling; returning it later does not erase a disturbance.' });
   }
   checks.push({ id: 'inventory-preserved', name: 'Known object inventory retained',
@@ -315,7 +343,8 @@ export function evaluateMobileCandidate(input: MobileCandidateInput): MobileCand
     distanceTravelled: world.distanceTravelled - initialWorld.distanceTravelled,
     simulatedSeconds: world.simTime - initialWorld.simTime,
     evaluationDurationMs: Math.max(0, Math.round((performance.now() - started) * 100) / 100), ticks, checks,
-    initialWorld, finalWorld: world, trajectory, executionBudget: { maxTicks: MAX_TICKS, dt: DT, maxSamples: MAX_SAMPLES },
+    initialWorld, finalWorld: world, trajectory, protectedObjectPolicy: clone(MOBILE_PROTECTED_POLICY), protectedViolations,
+    executionBudget: { maxTicks: MAX_TICKS, dt: DT, maxSamples: MAX_SAMPLES },
     limitations: [
       'High-level skill-order evaluation on a known simulated map, not a learned motor-policy benchmark.',
       'Only submitted navigation actions receive collision-checked paths; no missing action or task goal is repaired.',

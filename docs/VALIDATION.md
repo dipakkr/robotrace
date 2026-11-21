@@ -6,7 +6,30 @@ The JSON artifacts below are ignored local QA records in this development
 checkout; they are not included in a fresh clone. Linked scripts reproduce the
 corresponding checks, with provider tests requiring an explicitly intended call.
 
-## Current evidence
+## Latest interaction and regression release
+
+The current console executes supported local commands immediately. It has one
+small, severity-colored activity terminal, no task approval tabs or countdown,
+and one-click saves explicitly marked **Unreviewed**. Earlier approval recordings
+below are dated historical evidence, not the current operator flow.
+
+| Current check | Observed result | Evidence |
+| --- | --- | --- |
+| Full suite and build | **313 tests pass** (181 simulation/data + 132 server/scripts); production build passes. Large Three/Agora bundle warning remains. | `.local/qa/latest-release-tests.log`, `latest-release-build.log` |
+| Workcell terminal | Four original immediate-flow groups and four final fresh-history groups pass. One header, green 10px monospace, yellow warnings/red errors, current-attempt evidence only, no stale pre-run progress. | `terminal-workcell-results.json`, `workcell-terminal-context-results.json` |
+| Natural follow-up | Actual counter→Sink task, exact “Move all cups from sink to drying rack”→both cups at Drying, preserved Bowl, fresh task ID and 5/5 new-goal checks. Unsupported Fork request rejects without stale completion. Three browser groups pass. | `workcell-cups-chain-results.json` |
+| Follow-up persistence | Actual controller chain then one real API save: accepted independently recomputed new Drying task, review false/operator-save. | `followup-save-results.json` |
+| Mobile immediate execution/save | Actual delivery, paused clock, resume and one-click real HTTP 201 save; report review false, no approval gate. | `mobile-terminal-immediate-results.json` |
+| Matched regression | Four browser groups, two actual local evaluations, same scene/goal/seed, both Cup→Sink, protected Bowl round trip rejected despite exact restoration. | `matched-pair-ui-results.json`, `mobile-matched-pair.json` |
+| Independent consumer | Five browser groups: real exported pair, first violating time/XYZ, selectable plot, exact JSON analysis, offline standalone HTML, integrity refusal, presentation view at 1280×720 and phone layout. | `trace-analysis-results.json`, `matched-analysis-final/manifest.json` |
+| Current voice | One real prerecorded-input session executes immediately, saves unreviewed evidence and speaks its actual unreviewed status. Four workflow checks passed. The original fifth spelling check failed because the transcript rendered spoken Sink as its homophone “sync”; the explicit content reanalysis checks that against the accepted outgoing Sink announcement. No human listening pass is claimed. | `immediate-voice-workflow/results.json`, `immediate-voice-workflow/audio-content-reanalysis.json` |
+| Simulation video | **89.8-second** actual typed-command recording: movement, human pause/resume, one-click unreviewed save, matched regression and independent plot. No voice/model session; two local evaluations. | `simulation-video/results.json`, `simulation-video/teachtrace-simulation-walkthrough.mp4` |
+
+Generated evidence paths above are under ignored `.local/qa/`. The component-by-component
+purpose review is [UI_COMPONENT_AUDIT.md](UI_COMPONENT_AUDIT.md). Human microphone/hearing,
+real robot physics, downstream training benefit and production tenancy remain open.
+
+## Earlier point-in-time evidence
 
 | Area | Observed result | Record / reproducible check |
 | --- | --- | --- |

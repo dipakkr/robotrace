@@ -87,18 +87,16 @@ test('voice mobile contract grounds commands, rationale and completion in curren
   assert.match(llm.greeting_message, /where the robot should go/);
 });
 
-test('voice approval policy preserves automatic reversible motion and explicit critical-action confirmation', () => {
+test('voice policy follows immediate simulation execution and separates saving from human review', () => {
   const { properties: { llm } } = buildAgentConfig({ env: fakeEnv, id: 'session', channel: 'room', agentToken: 'rtc', toolSecret: 'tool-secret' });
   const instructions = llm.system_messages.map(message => message.content).join(' ');
   const command = llm.tools[1].function;
-  for (const text of [instructions, command.description, command.parameters.properties.command.description]) {
-    assert.match(text, /plan.confirmationRequired/);
-    assert.match(text, /automatic approval/);
-  }
-  assert.match(instructions, /visible three-second cancellation window/);
-  assert.match(instructions, /Scene replacement, reset and evidence review or submission never use automatic approval/);
-  assert.match(instructions, /automatically approved motion, do not call approve yourself/);
-  assert.match(command.parameters.properties.command.description, /automatically approved motion waits.*without an approve call/);
+  assert.match(instructions, /current local console uses immediate simulation execution/);
+  assert.match(instructions, /do not ask the operator to approve/);
+  assert.match(command.description, /no approval gate or countdown/);
+  assert.match(command.parameters.properties.command.description, /execute immediately without approval/);
+  assert.match(instructions, /unreviewed record must never be described as human-approved/);
+  assert.match(instructions, /status:succeeded and verified:true/);
 });
 
 export { fakeEnv };

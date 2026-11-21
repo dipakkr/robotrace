@@ -1,31 +1,40 @@
-# Stage openings and four-minute demo
+# Three-minute product demo and recovery
 
-Use the full local application at **http://127.0.0.1:5189/**. The employee is a
-robotics data/evaluation engineer preparing household robot tasks and reviewing
-what actually happened. Choose one opening, then finish the same save/report loop.
+**Current operator policy — latest user instruction:** the local console uses a
+single activity terminal. Supported task commands start immediately; there is no
+Review tab, approval dialog or three-second countdown. Pause, Stop, human clear
+and explicit Resume remain available. Requested reset/scene changes and a save
+or export execute from their action directly, without a second confirmation.
+Saving is **operator-save**, not a quality approval: records remain unreviewed
+with `approved:false` and `identityVerified:false`. Simulator acceptance can pass
+independently of that review state. The new direct-save backend is tested; the
+changed terminal UI needs its current targeted browser check. Older recordings
+with review/countdown controls are historical provider evidence, not today's UI.
 
-## Three openings
 
-**The task.**
+The employee is a robotics QA/evaluation engineer. The product loop is **evaluate
+→ independently analyze → regress → hand off a candidate correction**. A voice
+command and robot motion begin the workflow; the reproducible failure and its
+handoff make the output useful to another engineer.
 
-> “A robotics team needs ‘take the cup to the sink’ to become an exact plan and a
-> checked record. I’ll ask by voice, inspect what the robot actually does, and
-> save a reviewed report that another engineer can reopen.”
+**Current status:** matched-pair UI has four passed browser groups; portable
+analysis/CLI/report has seven passing tests and actual CLI evidence. The
+independent upload viewer now passes four browser groups on the same pair export,
+including source-derived values, offline report reopening and tamper rejection. Existing provider/save
+and native consumer evidence remain separately verified. The source-derived standalone CLI HTML report is also available as an offline fallback. See
+[REGRESSION_WORKFLOW.md](REGRESSION_WORKFLOW.md).
 
-**The useful failure.**
+## Opening
 
-> “The cup is beyond the arm's reach. A fixed robot should refuse. This mobile
-> robot can move its base, recheck reach and try again. We can test both from the
-> same scene and keep the failure as evidence, rather than hiding it.”
+> “A robot can finish its movements and still do the wrong task. TeachTrace lets
+> a robotics engineer brief a task by voice, catch that difference, inspect the
+> actual exported states outside the simulator, and rerun a correction on the
+> same scene. The handoff is an unreviewed candidate pair, not a trained policy.”
 
-**The data question.**
+A shorter opening: **“We turn a spoken robotics task into a reproducible test,
+an inspectable failure and a candidate correction.”**
 
-> “How do you tell whether generated robot motion is useful evidence? Start with
-> the task, preserve the starting scene, check the outcome and retain failures.
-> TeachTrace makes that workflow visible. Exporting coordinates alone does not
-> mean we trained a robot.”
-
-## Before the judges arrive
+## Before presenting
 
 ```sh
 npm run demo:start
@@ -33,79 +42,90 @@ npm run demo:status
 npm run doctor -- --check --health
 ```
 
-Use `npm run demo:restart-api` only when required, then reconnect voice. Keep
-ignored `.env.local`, headers and provider dashboards off the presentation screen.
-UI/API ports are 5189/8787; the public callback tunnel exposes authenticated tools
-on 8788. The private hosted site is a static frontend and cannot replace this
-local backend for the complete workflow.
+Use **http://127.0.0.1:5189/** for the full local workflow. UI/API ports are
+5189/8787; the public callback exposes authenticated tools on 8788 only. The
+private hosted site is a static frontend and cannot supply the local API or
+provider session. Keep ignored credentials and provider headers off screen.
 
-Open a fresh **Mobile kitchen**. Use 3× simulation speed for a short presentation,
-or 2× for an easier interruption. Disable automatic motion in Review if narrating
-manual approval. Rehearse a person's real microphone and speaker; recorded speech
-and automated audio transcription are not that acceptance. Check
-[VALIDATION.md](VALIDATION.md) and HV-01 in
-[FEATURE_ACCEPTANCE.md](FEATURE_ACCEPTANCE.md).
+Prepare a fresh Mobile kitchen, the matched protected-table case and a folder
+for downloaded evidence. Practice the human interruption at 2× speed, or use 3×
+if time is tight. Rehearse a person's microphone/speaker separately. The recorded
+provider proof uses prerecorded input and cannot close HV-01.
 
-The combined prerecorded-input rehearsal passed five checks: real voice,
-five executed steps, explicit save, saved-report context and spoken confirmation.
-A fresh browser reopened and reexported that exact record; the standalone consumer
-verified it. Keep the [labelled 75-second backup](../.local/qa/final-workflow/teachtrace-voice-workflow.mp4)
-and [native evidence](../.local/qa/final-workflow/mobile-evidence.json) ready.
-The viewing copy includes prerecorded test commands and actual remote agent audio
-with approximate alignment. Never present it as a live human microphone run.
+Keep the [labelled automated backup](../.local/qa/final-workflow/teachtrace-voice-workflow.mp4)
+and [exact saved native evidence](../.local/qa/final-workflow/mobile-evidence.json)
+ready. Its prerecorded commands and actual remote audio have approximate A/V
+alignment; it is not a live human-microphone run or an exactly synchronized clip.
 
-## Four-minute sequence
+## Three-minute sequence
 
-| Time | Action | Observable evidence |
+| Time | Action | Evidence / precise explanation |
 | --- | --- | --- |
-| 0:00–0:20 | Give one opening. Show **Mobile kitchen**, actual connection state and Cup beyond reach. | Employee, household task and laptop-only simulator scope. |
-| 0:20–1:15 | Say **“Take cup from counter to sink.”** Inspect the five-step plan and approve. During carrying, click **Human enters**; show held cargo and paused motion, then **Clear human → Resume**. | Counter navigation, actual reach recheck, collection, continuous carry, Sink docking and release. Clearance alone does not resume. Completion follows actual checks, not a spoken promise. |
-| 1:15–1:55 | In **Review**, inspect the three checks. Choose **Review & save mobile evidence**, then **Approve & save mobile evidence**. Open **Saved recordings**, select the returned record, scrub replay, export it and **Return to live kitchen**. | Explicit critical approval, persistent local ID/report, independently recomputed acceptance, SHA-verified read-only recording and preserved live world. No voice/countdown auto-submits evidence. |
-| 1:55–2:25 | In **Task plan**, run **Compare fixed vs mobile reach**. Export the reach comparison or mobile evidence. | Same starting scene/target/reach/controller: stationary refusal versus mobile travel and delivery. Navigation is the changed capability; this is not a model ranking. |
-| 2:25–3:00 | Open **AI deployment checks**. Show **Try pickup before moving** and/or **Try wrong destination**, then the five-case baseline or an existing model result. | Zero-travel reach failure; completed motion with rejected task goal; five baseline fixtures yield two accepted and three specific failures. Show the returned candidate and measured request time if using a real model. No automatic paid loop. |
-| 3:00–3:40 | Return to **Workcell → Environment → Household scenarios → After-meal counter reset**. Open **Generate variations**, count 100, seed 42, execute and export. | The rehearsed source gives 60 accepted + 40 expected refusals, not 100 independent demonstrations. Parent fingerprint, seed/index and compact joint traces support reproducibility. Controller and hash timings are separate. |
-| 3:40–4:00 | Show a prepared consumer manifest or native export and state the boundary. | “This is inspectable task/evaluation evidence. The consumer verifies SHA/FK and writes next-observed-state targets. We have not trained a policy or proved real-robot transfer.” |
+| 0:00–0:15 | Give the opening; show Mobile kitchen and current voice state. | Cup begins beyond stationary reach. The map and controller are bounded simulation. |
+| 0:15–0:55 | Say **“Take cup from counter to sink.”** Read the five-step plan/events in the terminal as execution starts immediately. Invite the judge to click **Human enters** during carrying, then **Clear human → Resume**. | Navigation, reach recheck, pickup/carry/place; clearance alone does not resume. This supervised live run demonstrates interaction/recovery, not one member of the matched regression pair. |
+| 0:55–1:15 | Click the save action once and show its returned unreviewed record/report. | Saving does not assert human review. Geometry checks and stopped/failed outcomes remain truthful; spoken progress is not the save receipt. |
+| 1:15–1:45 | Open **AI deployment checks → Run matched regression pair**. | Two local runs share the exact protected-table source and Cup → Sink goal. A valid Cup delivery is compared with a candidate that also picks and returns protected Bowl. Exact final restoration does not erase history. |
+| 1:45–2:20 | Click **Download comparison → Open trace analysis**, then load the actual exported file. | File-derived chart and first recorded object change (this run: 20.6 s, step 8). The complete-record rule uses intentional zero tolerance; a status change can precede visible movement. Do not invent a 1 cm threshold or claim physical contact detection. |
+| 2:20–2:45 | Use **Load correct recipe → Evaluate operator candidate** on the selected frozen source/goal; retain that additional result separately. | Actual task checks distinguish the accepted correction from the completed-but-rejected Bowl round trip. The evaluator does not silently repair a candidate. |
+| 2:45–3:00 | Show the **unreviewed candidate preference** handoff and source/run identities. | “Another engineer can reproduce and review this comparison. We have not trained a model, validated a learning adapter or proved transfer.” |
 
-If time is short, preserve the explicit **save → report → reopen** loop and drop
-optional comparisons. Expected refusals are useful test results, not completed
-deliveries. Confirm the actual exported counts before stating them.
+If the independent viewer is unavailable, use the labelled standalone CLI report and the already observed **Try pickup before
+moving**, **Try wrong destination** and protected-object artifact, clearly state
+that this is the offline/report fallback rather than the live upload interaction, and finish the
+verified explicit save/reopen loop. Do not simulate a new feature's success.
 
-## Useful extensions after the main loop
+The matched comparison export retains its original two run IDs. A later operator correction is an additional result, not silently inserted into that earlier preference pair.
 
-- **Protected-object error:** show the recorded Bowl pick-and-return case. Its
-  controller completed and restored the exact final pose, but the task was
-  rejected at the actual protected pickup step. A final screenshot cannot erase
-  the handling history.
-- **Workplace knowledge:** load a workcell repair, sample-routing or household
-  assignment. Retrieve its locally authored sample SOP and acceptance rules;
-  record, review and submit to update the local assignment/report. Do not call it
-  an external enterprise integration.
-- **Reference authoring:** explicitly submit a photo or one selected local-video
-  frame. Inspect the proposed supported objects/goals, short JPEG fingerprint and
-  selected time, then approve. The world retains metadata, not the media or
-  filename. This is uncalibrated scene approximation, not human-motion extraction.
-- **Correlated data:** load two variants and inspect their native exports or
-  consumer manifests. Different child layouts retain one declared parent group.
-  The ancestry is not authenticated and no train/test split is performed.
-- **Parking:** **Go Home** is navigation. With cargo, it retains the object and
-  creates no placement or delivery claim.
+The live judge interruption and matched comparison are separate demonstrations.
+Changing interventions, initial layout or goal between pair members invalidates
+an apples-to-apples candidate comparison. An authored negative plan is not
+claimed to be a mistake generated by a model.
 
-## Recovery
+## What to say at the chart
+
+> “This is the object's recorded state history, not just its final pose. The
+> rule is that Bowl must remain completely unchanged. Here is the first recorded
+> change. If status changed before position, the violation marker can appear
+> before the position curve moves. Later returning to the starting pose does not
+> undo that violation.”
+
+Zero tolerance is intentional for exact native simulator values of an untouched
+object. It is not a claim that a noisy camera or physical robot can be evaluated
+with the same tolerance. SHA verifies content consistency, not authorship or
+physical truth.
+
+## Optional follow-ups
+
+- **Saved evidence:** open Saved recordings, load the exact record, seek actual
+  states, export, then Return to live kitchen. Fresh-browser reexport/independent
+  native SHA/FK consumption has verified evidence.
+- **Fixed versus mobile reach:** same source/target/reach/handling controller,
+  with navigation removed in the fixed condition. This is a capability ablation,
+  not a model ranking.
+- **Real model proposal:** make an explicit intended provider request, retain its
+  returned sequence and measured latency. No automatic paid comparison loop.
+- **Reference scene and lineage:** a submitted photo/selected video-frame JPEG
+  has a fingerprint and optional selected time; loaded variations retain
+  declared parent/seed/index. No calibrated reconstruction, temporal human
+  action extraction or authenticated ancestry is implied.
+- **100 cases:** the rehearsed seed-42 source produced 60 accepted and 40 expected
+  refusals. They are correlated synthetic evaluations, not independent human
+  demonstrations or a training gain.
+
+## Recovery and honesty
 
 | Problem | Action | Accurate statement |
 | --- | --- | --- |
-| Permission denied / connection pending | Inspect the visible mobile error. Allow microphone access; use **Reset voice** deliberately, then reconnect once. | “This attempt has not established a live voice round trip.” |
-| Stale active session | Use mobile **Reset voice** or workcell **Reset voice connection**. | “Reset is cleanup, not proof that a queued sentence played.” |
-| Progress voice arrives late | Use the visible controller status/checks. | “This narration refers to a verified milestone; delivery timing can lag.” |
-| Human proxy blocks motion | Keep cargo held; clear the scenario, then explicitly Resume. | “This is a software obstruction, not tracked human motion or certified safety.” |
-| Evidence service unavailable | Keep the frozen review, **Export reviewed copy**, then retry or cancel deliberately. | “The file is retained; persistent submission is not confirmed.” |
-| Provider/network unavailable | Use a clearly labelled recording or typed local workflow. | “This is the recorded/fallback path.” |
+| Microphone/provider failure | Read the visible error; deliberately Reset voice or switch to typed commands. | “This turn has not proved a live voice round trip.” |
+| Progress narration is late | Use current controller checks. | “Speech refers to an already verified milestone and can be queued.” |
+| Human proxy blocks movement | Clear the explicit proxy and Resume. | “This is a software scenario, not tracked human motion or certified safety.” |
+| Save fails | Retain/export the recorded evidence and retry the save directly. | “Persistent save is not confirmed; the record remains unreviewed.” |
+| Independent viewer rejects the file | Keep original export and inspect the supported format/schema. | “This file has not passed analysis; I will not substitute a fabricated chart.” |
+| Independent upload interaction unavailable | Open the already generated standalone HTML report for the same exported pair. | “This is the offline report; its values come from the exported source.” |
 
-The separate progress-audio audit proved the requested marker and reach-check
-speech were present in captured real RTC audio. Its overall delivery stage timed
-out; do not use that clip as a passed complete-task demonstration. A REST
-acknowledgment is not heard audio, and an automated transcript is not a human
-listening test.
-
-See [JUDGING_STORY.md](JUDGING_STORY.md), [VALIDATION.md](VALIDATION.md) and the
-[atomic backlog](DELIVERY_BACKLOG.md) for track fit, evidence and remaining gates.
+The actual combined provider/save/spoken-report run and labelled backup are
+prerecorded-input evidence. The separate progress-only audit timed out before
+its delivery predicate and remains an incomplete run. Neither replaces a person
+speaking and listening in HV-01. See [VALIDATION.md](VALIDATION.md),
+[DATA_CONSUMER.md](DATA_CONSUMER.md) and
+[REGRESSION_WORKFLOW.md](REGRESSION_WORKFLOW.md) for artifact boundaries.

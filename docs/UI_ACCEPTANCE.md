@@ -78,3 +78,20 @@ The bounded [approval-edge-smoke.mjs](../scripts/approval-edge-smoke.mjs) run us
 | Busy / replay / modal / occupied pending-plan combinations | Source eligibility guards were inspected. Manual-near-expiry proves cancellation of its obsolete timer as the queue becomes busy. Separate stale-timer browser combinations for replay, modal and occupied state were not added to this bounded release audit; existing critical-action and human-interruption evidence tests different requirements. These specific unrun combinations remain open rather than receiving inferred acceptance. |
 
 This closes the two observed timer-race questions; it does not declare every R07 edge or human microphone/listening acceptance complete. No runtime source changed during this timer audit.
+
+## Latest user override: unified terminal and immediate commands
+
+The latest instruction supersedes the tabbed Review/countdown design and its earlier acceptance records above. The workcell now has one compact activity terminal for context, the proposed operations, actual phase changes and checks. Supported commands execute immediately, with Pause/Resume/Stop available; there is no separate motion approval or three-second timer. Saving is one direct action and must not assert human review.
+
+Current focused `.local/qa/terminal-workcell-results.json` records four passed groups with no provider requests or server writes: actual submit-to-Executing DOM transition **49.3 ms** in this run; one completed action; working pause/resume; no tabs/chat bubbles/approval controls; actual 10 px IBM Plex Mono activity text at `rgb(121,175,139)`; reachable 1280×720 command input and 390 px document/body widths. Browser automation/cold-render overhead was recorded separately and is not the command-execution latency. Printed event kinds accompany severity colors: muted green activity, bright green success, yellow warnings, red errors, gray timestamps/context.
+
+The single-click Save test captured and blocked its request: `status:'review'`, `submissionMode:'operator-save'`, `review:{approved:false,identityVerified:false,source:'operator-save'}`. It verified no confirmation dialog and no forged approved state; **this intercepted test does not claim actual API persistence**. Direct-save server/real-record acceptance is owned by the separate backend/integration checks. Paused warning behavior was observed; other severity styles also have source definitions.
+
+Screenshots for this current design are `.local/qa/terminal-workcell-1280.png` and `terminal-workcell-390.png`. Older Review screenshots and countdown edge checks are historical evidence for the superseded design, not current product instructions. HV-01 remains separate and open unless a real person performs the microphone/listening check.
+
+
+### Current-scene evidence isolation and natural follow-up
+
+The final narrow workcell follow-up removes the duplicate outer copilot heading, uses one Activity terminal header/toolbar, classifies its introduction as SYSTEM and uses a neutral context time. Fresh scenes show `No task executed in this scene` / `Not run`. A previous stored record does not supply current action totals, Save/Export, timeline or report state; explicit history/replay selection identifies past evidence.
+
+Four groups in `.local/qa/workcell-terminal-context-results.json` passed with a real old episode preloaded, then an actual new one-action task, ID-correct export/intercepted unreviewed Save, and 390 px layout. Three groups in `workcell-cups-chain-results.json` passed for actual counter cleanup → both cups Sink → natural source-filtered move to Drying under a fresh task identity. A later unsupported command displayed rejection and hid stale completion/check/evidence claims while preserving the prior record. No paid request or API write occurred in these checks. [Component audit](UI_COMPONENT_AUDIT.md) closes only UIA-01 through UIA-05 from this evidence; other findings remain separately scoped.

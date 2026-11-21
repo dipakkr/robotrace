@@ -158,6 +158,7 @@ test('approval events distinguish explicit operator approval, automatic simulati
  assert.match(startMobilePlan(source,plan,'manual').world.events[0].message,/Operator explicitly approved/);
  assert.match(startMobilePlan(source,plan,'automatic').world.events[0].message,/automatically approved/);
  assert.match(startMobilePlan(source,plan,'evaluation').world.events[0].message,/no human approval is asserted/);
+ assert.match(startMobilePlan(source,plan,'immediate').world.events[0].message,/Operator command started immediate local simulation/);
  assert.equal(planMobileTask('reset',source).confirmationRequired,true);
 });
 

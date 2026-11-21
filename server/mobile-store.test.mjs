@@ -80,6 +80,21 @@ test('explicit human review is required before any filesystem mutation', async (
   assert.equal(mutations, 0);
 });
 
+test('one-click operator saves retain unreviewed provenance while independently checking completed and stopped outcomes', async t => {
+  const store = createMobileEvidenceStore({ dataDirectory: await temporary(t) });
+  const direct = { approved: false, identityVerified: false, source: 'operator-save' };
+  const complete = await store.submit({ evidence: fixture(), review: direct });
+  assert.equal(complete.report.accepted, true);
+  assert.deepEqual(complete.report.review, direct);
+  assert.match(complete.report.summary, /^Unreviewed mobile attempt saved/);
+  assert.deepEqual((await store.get(complete.id)).review, direct);
+  const stopped = await store.submit({ evidence: fixture({ stop: true }), review: direct });
+  assert.equal(stopped.report.accepted, false); assert.equal(stopped.report.outcome, 'stopped');
+  assert.deepEqual(stopped.report.review, direct);
+  await assert.rejects(store.submit({ evidence: fixture(), review: { ...direct, approved: true } }), badInput);
+  await assert.rejects(store.submit({ evidence: fixture(), review: { ...direct, identityVerified: true } }), badInput);
+});
+
 test('stopped, failed and human-blocked recordings persist as nonaccepted despite forged posted scores', async t => {
   const store = createMobileEvidenceStore({ dataDirectory: await temporary(t) });
   for (const [options, outcome] of [[{ stop: true }, 'stopped'], [{ deep: true }, 'failed'], [{ human: true }, 'paused']]) {
