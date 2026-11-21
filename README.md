@@ -14,10 +14,11 @@ The main workspace is a persistent mobile kitchen. Cup, Bowl, Counter, Table, Si
 
 ![Photo-informed office hall generated from a private room reference](docs/media/robotrace-photo-hall.png)
 
+- **[Voice action → Stop → Save → QA, with real captured user/assistant audio — 48-second demo](https://github.com/dipakkr/robotrace/blob/main/docs/media/robotrace-voice-experiment.mp4)**
 - **[English/Hindi navigation, Stop, pickup and held carrying — 73-second recorded demo](https://github.com/dipakkr/robotrace/blob/main/docs/media/robotrace-english-hindi-demo.mp4)**
 - **[Quiet listening, Pause/Resume, and Stop without leaving the kitchen — 41-second recorded demo](https://github.com/dipakkr/robotrace/blob/main/docs/media/robotrace-session-controls.mp4)**
 
-These are actual application recordings from real Agora/Murf sessions using prerecorded microphone input. The videos show the screen and captions; remote assistant audio was verified separately and is not mixed into these video files. The first clip shows an earlier control layout; the screenshot and second clip show the consolidated session controls. Videos can be opened or downloaded from their repository file pages.
+These are actual application recordings from real Agora/Murf sessions using prerecorded microphone input. The first (whole-session QA) video includes the actual captured microphone and assistant tracks with **approximate wall-clock alignment**, not sample synchronization. The two earlier videos show the screen/captions; their verified remote audio is not mixed in. The English/Hindi clip shows an earlier control layout; the kitchen screenshot, whole-session demo and quiet-listening clip show consolidated session controls. Videos can be opened or downloaded from their repository file pages.
 
 ## What works
 

@@ -15,7 +15,9 @@ try {
  assert.equal(result.interceptedStarts,1);assert.equal(await page.locator('.mobile-command,.mobile-sandbox-task').count(),0);
  assert.equal(await page.getByRole('textbox').count(),0);
  result.checks.push({name:'Direct kitchen route opens correct heading, no text/task form, one automatic voice attempt',passed:true});
- await page.getByRole('button',{name:'Workcell',exact:true}).click();assert.equal(new URL(page.url()).pathname,'/');
+ await page.getByRole('button',{name:'Workcell',exact:true}).click();
+ const draft=page.getByRole('dialog',{name:'Finish experiment',exact:true});
+ await draft.waitFor();await draft.getByRole('button',{name:'Discard',exact:true}).click();await page.waitForURL('http://127.0.0.1:5189/');assert.equal(new URL(page.url()).pathname,'/');
  await page.goBack();await page.getByRole('heading',{name:'Free Kitchen Navigation Environment',exact:true}).waitFor();
  await page.waitForFunction(()=>document.querySelector('.mobile-voice [role=status]')?.textContent==='error');
  assert.equal(result.interceptedStarts,2);result.checks.push({name:'Browser navigation reenters kitchen and starts exactly one new connection attempt',passed:true});

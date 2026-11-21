@@ -2,6 +2,12 @@
 
 Research checked **21 November 2026**. Primary sources only. This document separates source-backed observations from proposed RoboTrace product decisions. It does not claim a partnership, a lab's willingness to ingest our data, or demonstrated improvement to any robot model.
 
+## Current implementation update
+
+The release now includes actual known-map mobile navigation, held-object transport, dynamic person/block routing, whole-session voice/audio recording and requested-versus-observed QA. A separate photo-informed hall uses model-proposed estimated furniture footprints for rendering and routing. The earlier implementation priorities below are design history, not a statement that mobile navigation remains unimplemented.
+
+The strongest demonstrated output is now a **language-to-action regression case**: the same recognized 1 m instruction and identical initial world produced a zero-distance wrong action before a dispatcher/prompt fix, then a measured 1 m action afterward. The original failed run, corrected run, audio, traces and independent analysis are inspectable. This demonstrates debugging of the voice/planning/controller system; no learned-policy improvement or hardware transfer is asserted.
+
 ## Recommended product
 
 > RoboTrace helps robotics employees turn task briefs into executable simulation assignments, inspect decisions and failures, collect and review episodes, and deliver reproducible data packages to a downstream robotics workflow through a voice-assisted workbench.
@@ -68,7 +74,7 @@ Recommended initial families share rigid-object manipulation to keep one robot/c
 | **Kitchen counter** | Move the cup and utensil case to the serving tray; put the bowl in the storage tray | Counter clearance, semantic object types and a distinct assignment; idealized rigid-object grasps | Second; shelf access and orientation-sensitive tasks remain later capabilities |
 | **Laboratory sample-routing bench** | Route Sample alpha to Rack A and Sample beta to Rack B; leave the Reference sample untouched | Label identity, distinct rack destinations, unchanged reference pose/state, exact assignment completeness | Third; operational workflow only, with synthetic/nonclinical samples |
 
-These bounded families now have repository implementations and controller-backed checks in [environments.ts](../src/sim/environments.ts). Household task stories add distinct routing and protected-object conditions in [workplace-cases.ts](../src/sim/workplace-cases.ts); their rooms are decorative context. Release/browser evidence remains separate from the existence of those modules. Drawer operation, insertion, deformable laundry, fluid pouring, mobile navigation, humanoid control, and multirobot planning are separate capability expansions. They must not be declared supported simply because an asset can be rendered.
+These bounded families now have repository implementations and controller-backed checks in [environments.ts](../src/sim/environments.ts). Household task stories add distinct routing and protected-object conditions in [workplace-cases.ts](../src/sim/workplace-cases.ts); their rooms are decorative context. Release/browser evidence remains separate from the existence of those modules. Drawer operation, insertion, deformable laundry, fluid pouring, humanoid control, and multirobot planning are separate capability expansions. They must not be declared supported simply because an asset can be rendered.
 
 ## Shared architecture
 

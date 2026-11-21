@@ -58,3 +58,7 @@ Local evidence:
 - [Requested-versus-observed and precision regressions](../src/data/voice-experiment.test.ts)
 
 Local evidence files are development artifacts and may not be included in the public repository. Hash checks detect changes relative to the stored seal; they are not authentication, verified operator identity or proof that submitted data came from physical hardware.
+
+## Actual before/after system regression
+
+Two recorded provider sessions independently verify the same full initial simulator state (SHA-256 `17c21266b0aec19376a39c909bb4269a5be387f8f3f1ab4874eb2234279c7a10`) and identical final ASR: “Please move forward one meter.” Before the strict final-caption dispatcher/prompt corrections, the system executed `Go Home`: actual path/net movement **0 m**, request failed. Afterwards it executed `Move forward 1 meter`: actual path/net movement **1 m**, request passed. The earlier association is temporal-only; the corrected recording supplies an explicit turn ID. This is one reproduced system regression and correction, not model-weight training, isolated causal attribution or physical-transfer improvement. The original sealed recordings remain unchanged. Local evidence: [actual-before-after.json](../.local/qa/voice-experiment-live-corrected-attempt2/actual-before-after.json).

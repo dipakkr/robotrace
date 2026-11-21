@@ -4,6 +4,12 @@ Live sources checked **21 November 2026**. This document separates verified comp
 
 **The useful product direction is a demonstration-to-task review and evaluation workbench.** A collector brings a permitted household reference; an operator checks the intended objects, goals and exceptions; competing plans are evaluated on the same reviewed scenario; another engineer receives reproducible evidence. The present version supplies the task/evaluation layer. It does not automatically turn a phone recording into robot-control training data.
 
+## Current product placement
+
+RoboTrace currently sits at the **task evaluation and failure-evidence layer**. Its free mobile sandbox records a voice operator’s requests, the interpreted tools, actual simulated base/object/analytic-arm states, interventions and checked outcomes. It can expose a language-to-action error even when the model-chosen task itself completed. Another engineer can inspect the exported JSONL without the simulator API.
+
+The newer `/hall` route adds photo-informed, estimated furniture footprints rather than only template slots. One real upload/draft/apply and three native navigation checks have passed. That is a navigable room hypothesis, not photogrammetry or recovered human demonstration data. Earlier workcell references below retain their original template-specific boundaries.
+
 ## 1. Is the Pronto example real?
 
 Pronto's own **Verified terms**, updated July 2026, describe household-service recordings and anonymized AI-training uses, including third-party models. That verifies a published policy, rather than actual downstream delivery or learning benefit. [Pronto Verified terms](https://www.withpronto.com/verified-tnc/)
