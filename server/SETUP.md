@@ -9,15 +9,54 @@ process, and a publicly reachable HTTPS callback. No physical robot is needed.
 From the `teachtrace` directory:
 
 ```sh
-cp .env.example .env.local
+cp -n .env.example .env.local
 ```
 
-Edit `.env.local` in your editor. It is ignored by Git, as are local episode
+`cp -n` leaves an existing local configuration in place. Edit `.env.local` in
+your editor. It is ignored by Git, as are local episode
 records. Do not paste keys into chat, screenshots, the command composer, or
 browser settings. Do not use a `VITE_` prefix: that would expose the value in the
 browser bundle. The API's status response and startup log report presence only.
 
-## 2. Agora project: App ID and App Certificate
+## 2. Agora: official Start with AI onboarding
+
+Follow [Agora Start with AI](https://docs.agora.io/en/introduction/start-with-ai)
+to install the official CLI for your platform. The development checkout used CLI
+0.2.10; use the current official installer for a fresh machine. Then:
+
+```sh
+agora login
+agora project list
+agora project use "YOUR_PROJECT_NAME"
+agora project doctor --feature convoai
+```
+
+Choose the intended existing project. If you need a new standalone reference,
+`agora init my-voice-reference --template nextjs` is the official onboarding flow;
+it can reuse a project or guide project creation. Keep that app separate from
+TeachTrace. For a reference app explicitly bound to your existing project:
+
+```sh
+agora quickstart create agora-reference --template nextjs --dir .local/agora-reference --project "YOUR_PROJECT_NAME"
+agora quickstart env write .local/agora-reference --project "YOUR_PROJECT_NAME"
+```
+
+`quickstart env write` selects the reference template's expected environment file.
+It does not configure TeachTrace's Murf or LLM provider keys. For this custom
+React/Node app, write the project credentials using the standard server-only names:
+
+```sh
+agora project env write .env.local --template standard --project "YOUR_PROJECT_NAME"
+```
+
+Read the CLI prompt before changing an existing file; do not use `--overwrite`,
+which replaces the file with only the two Agora values. Add the remaining fields
+from `.env.example` in your editor if needed. Do not run env-print commands,
+`cat .env.local`, or include credential values in terminal arguments or screenshots.
+The reference app's `NEXT_PUBLIC_*` naming is specific to its template; TeachTrace's
+provider settings stay server-only.
+
+### Console alternative: App ID and App Certificate
 
 Open [Agora Console](https://console.agora.io/). New users can follow the
 [official account guide](https://docs.agora.io/en/introduction/account).
@@ -35,53 +74,39 @@ on the server. An internal Project ID or manually generated temporary token does
 not replace either value in this adapter. See the
 [Console credentials and service controls](https://docs.agora.io/en/introduction/console-setup).
 
-## 3. Agora REST credentials: Customer ID and Customer Secret
+## 3. Agora REST authentication: no extra key required by default
 
-The current server uses Basic authentication for the Main Conversational AI REST
-API, plus separate RTC tokens for channel access.
+The server signs a short-lived Agora REST token with `AGORA_APP_ID` and
+`AGORA_APP_CERTIFICATE`. It separately signs RTC tokens for channel access.
+You do not need an account REST key for this default route.
 
-1. In Agora Console, open the account menu from your username at the bottom of
-   the sidebar and choose **RESTful API Keys**.
-2. Choose **Create API Key** and save the downloaded credential securely.
-3. The download's **Key** is `AGORA_CUSTOMER_ID`; its **Secret** is
-   `AGORA_CUSTOMER_SECRET`.
+If your deployment deliberately uses Basic authentication instead, create a
+RESTful API key through the Agora Console account menu and set **both**
+`AGORA_CUSTOMER_ID` and `AGORA_CUSTOMER_SECRET`. The server selects this optional
+override only when both are present. Keep the pair empty for certificate auth;
+a partially filled pair does not activate Basic auth.
 
-Some Console versions show this under **Developer Toolkit → RESTful API**.
-These account-level credentials are different from the App ID and certificate.
-The server constructs the Basic authorization header; do not manually encode or
-log it. See [Agora REST authentication](https://docs.agora.io/en/api-reference/api-ref/conversational-ai/platform/authentication)
-and the [Main start/stop API](https://docs.agora.io/en/ai/build/start-stop-agent).
+## 4. Murf Falcon
 
-## 4. Murf API key with Falcon streaming access
+Sign in to the [Murf API dashboard](https://murf.ai/api/dashboard), generate a
+key, and save it as `MURF_API_KEY`. Check that the account has Falcon streaming
+access and available usage. Follow the [key guide](https://help.murf.ai/generating-api-key)
+and [Agora's Murf configuration](https://docs.agora.io/en/ai/models/tts/murf).
+The default `MURF_VOICE_ID=en-US-matthew` matches the voice ID returned by the
+Murf voices API during onboarding; the provider also accepted alias `Matthew`.
+Use the canonical ID in new configurations. Provider access and billing remain
+account-specific.
 
-Open the [Murf API dashboard](https://murf.ai/api/dashboard), sign in/create an API
-account, and generate an API key. Save it when shown; Murf says it cannot be
-retrieved later. Put it in `MURF_API_KEY`.
+## 5. LLM API key
 
-Follow [Murf's key-generation guide](https://help.murf.ai/generating-api-key) and
-[API getting-started guide](https://help.murf.ai/getting-started-with-murf-api).
-Use the API account/dashboard, rather than assuming a Studio voiceover
-subscription supplies API access.
-
-The adapter requests Murf's **FALCON** streaming model and defaults to the
-`Matthew` voice. Set `MURF_VOICE_ID` if your account uses a different supported
-voice. [Agora's Murf integration](https://docs.agora.io/en/ai/models/tts/murf)
-documents the exact vendor configuration. Provider access and credits must be
-checked in your own account; no live key has been tested in this project yet.
-
-## 5. LLM key
-
-The adapter defaults to the OpenAI Chat Completions endpoint and the
-`gpt-4o-mini` model used in Agora's Main API examples. Create a project API key
-using the [official OpenAI quickstart](https://developers.openai.com/api/docs/quickstart),
-which links to the [API key dashboard](https://platform.openai.com/api-keys).
-Store that value in this project's `LLM_API_KEY` variable. Check access to the
-configured model in the API account. `LLM_MODEL` can be changed for another
-function-calling model supported by the integration; do not substitute a
-speech-to-speech model that bypasses the mandatory Murf voice output.
-
-API account access is separate from this project's local simulator. The key is
-used server-side in the agent configuration and is never returned to the browser.
+The current adapter uses OpenAI-compatible Chat Completions with `gpt-4o-mini`.
+For the default provider, create a project key at
+[OpenAI API keys](https://platform.openai.com/api-keys), save it as `LLM_API_KEY`,
+and confirm model access and usage limits. See the
+[official API quickstart](https://developers.openai.com/api/docs/quickstart).
+OpenAI is the current implementation choice, not a track requirement. The key
+stays on the server. No separate Deepgram key is required for the current
+Agora-managed speech-recognition configuration, subject to project access.
 
 ## 6. Make only the tool callback publicly reachable
 
@@ -139,12 +164,21 @@ action are the actual end-to-end verification.
 
 | Symptom | Check |
 | --- | --- |
-| Voice says setup required | API is running; all seven required fields are filled; API restarted |
-| Agora rejects start | Correct App ID/certificate pair; REST credentials; enabled Conversational AI; provider/model access |
+| Voice says setup required | API is running; all five required fields are filled; API restarted |
+| Agora rejects start | Correct App ID/certificate pair; optional Basic pair only if selected; enabled Conversational AI; provider/model access |
 | Voice connects but tools fail | Public HTTPS tunnel reaches 8788; URL matches environment; browser's command bridge remains open |
 | Agent voice absent | Mic permission, browser audio playback policy, account's Murf Falcon voice/key availability |
 | Motion outcome unconfirmed | Inspect the workcell; an accepted/timed-out command can still be running; stop before retrying |
 | No server episode storage on hosted preview | Static UI hosting does not deploy the local Node API; use browser export or deploy a separate backend |
 
-The prototype is not yet verified with live provider credentials. Do not show an
-unconfigured interface as a completed Agora/Murf integration in the hackathon.
+## Verification status
+
+On the development checkout, official CLI installation and OAuth login completed,
+Agora project doctor passed, and the real TeachTrace API agent start returned
+HTTP 201 followed by HTTP 200 on stop. The latest reported automated run passed
+65 tests. These are point-in-time results, not guarantees for a fresh account.
+
+Browser RTC microphone publishing, audible Murf playback, and the full spoken
+request → approved action → spoken result flow are still unverified. Check all
+three before presenting live voice as complete. Provider start acceptance alone
+does not prove that any participant heard audio.

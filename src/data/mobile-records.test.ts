@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {sealMobilePayload,verifyMobileEnvelope} from './mobile-records';import {createMobileEvidence} from './mobile-evidence';import {createMobileKitchen} from '../sim/mobile-navigation';
+test('mobile seal protects exact reviewed payload and rejects changed recorded state',async()=>{const w=createMobileKitchen();const payload=createMobileEvidence(w,[{time:0,world:w}],w,null);const envelope=await sealMobilePayload(payload);assert.equal(await verifyMobileEnvelope(envelope),envelope);envelope.payload.finalWorld.robot.position[0]+=.1;await assert.rejects(()=>verifyMobileEnvelope(envelope),/integrity/);});

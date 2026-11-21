@@ -1,10 +1,13 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { ContactShadows, Edges, Html, Line, OrbitControls, RoundedBox } from '@react-three/drei';
-import { Color, PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { Billboard, ContactShadows, Edges, Line, OrbitControls, RoundedBox, Text } from '@react-three/drei';
+import { Color, PerspectiveCamera, Quaternion, Vector2, Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { ARM_BASE, DESTINATIONS, solveArmIK, TABLE_TOP } from '../sim/engine';
 import type { SceneObject, Vec3, WorldState } from '../sim/engine';
+import { EnvironmentBackdrop } from './EnvironmentBackdrop';
+import { HumanPresenceProxy } from './HumanPresenceProxy';
+import { ENVIRONMENTS } from '../sim/environments';
 import './RobotScene.css';
 
 export interface RobotSceneProps {
@@ -18,7 +21,7 @@ export interface RobotSceneProps {
   onReady?: () => void;
 }
 
-function CameraRig({ view, onReady }: Pick<RobotSceneProps, 'view' | 'onReady'>) {
+function CameraRig({ view, onReady, humanPresent = false }: Pick<RobotSceneProps, 'view' | 'onReady'> & { humanPresent?: boolean }) {
   const { camera, gl, invalidate, size } = useThree();
   const controls = useRef<OrbitControlsImpl>(null);
   useEffect(() => {
@@ -42,6 +45,7 @@ function CameraRig({ view, onReady }: Pick<RobotSceneProps, 'view' | 'onReady'>)
           new Vector3(-1.47, 2.92, 0.32),
           new Vector3(1.5, 2.1, -0.8),
         ];
+      if (humanPresent) bounds.push(new Vector3(0.6, 1.9, 2.15), new Vector3(0.6, 0, 2.15));
       let distance = 2.8;
       for (const point of bounds) {
         const offset = point.sub(target);
@@ -54,7 +58,7 @@ function CameraRig({ view, onReady }: Pick<RobotSceneProps, 'view' | 'onReady'>)
     camera.lookAt(target);
     if (controls.current) { controls.current.target.copy(target); controls.current.update(); }
     invalidate();
-  }, [view, camera, invalidate, size.width, size.height]);
+  }, [view, camera, invalidate, size.width, size.height, humanPresent]);
   useEffect(() => {
     gl.domElement.setAttribute('aria-label', 'Interactive 3D robot workcell. Use the scene-object buttons to select parts.');
     onReady?.();
@@ -125,9 +129,7 @@ function Robot({ world }: { world: WorldState }) {
       </group>)}
       <mesh position={[0.1, 0.065, 0.045]}><sphereGeometry args={[0.017, 12, 12]} /><meshStandardMaterial color="#82d5ae" emissive="#49b782" emissiveIntensity={0.8} /></mesh>
     </group>
-    <Html position={[ARM_BASE[0] - 0.38, 0.85, ARM_BASE[2] - 0.45]} center transform rotation={[-Math.PI / 2, 0, 0]} distanceFactor={3}>
-      <div className="sim-base-label">TT–01</div>
-    </Html>
+    <Text font="/fonts/ibm-plex-sans-regular.ttf" position={[ARM_BASE[0] - 0.38, 0.85, ARM_BASE[2] - 0.45]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.075} color="#384047" anchorX="center" anchorY="middle">TT–01</Text>
   </group>;
 }
 
@@ -139,26 +141,75 @@ function Tray({ id, label, center, size }: typeof DESTINATIONS[number]) {
     </RoundedBox>
     {[[-size[0] / 2, 0, 0], [size[0] / 2, 0, 0]].map((position, index) => <mesh key={index} position={position as Vec3} receiveShadow><boxGeometry args={[0.018, 0.065, size[2]]} /><meshStandardMaterial color={accent} /></mesh>)}
     {[-1, 1].map(side => <mesh key={side} position={[0, 0, side * size[2] / 2]} receiveShadow><boxGeometry args={[size[0], 0.065, 0.018]} /><meshStandardMaterial color={accent} /></mesh>)}
-    <Html position={[0, 0.01, size[2] / 2 + 0.095]} center transform rotation={[-Math.PI / 2, 0, 0]} distanceFactor={3}>
-      <div className="sim-tray-label">{label}</div>
-    </Html>
+    <Text font="/fonts/ibm-plex-sans-regular.ttf" position={[0, 0.01, size[2] / 2 + 0.095]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.072} maxWidth={size[0] * 0.94} color="#384047" anchorX="center" anchorY="middle">{label}</Text>
   </group>;
 }
 
 function Part({ object, selected, onSelect }: { object: SceneObject; selected: boolean; onSelect: (id: string) => void }) {
   const materialColor = useMemo(() => new Color(object.color).offsetHSL(0, 0.15, -0.06), [object.color]);
-  return <group position={object.position}>
-    <mesh castShadow receiveShadow onClick={event => { event.stopPropagation(); onSelect(object.id); }} onPointerOver={event => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
-      {object.kind === 'cylinder' ? <cylinderGeometry args={[object.size[0] / 2, object.size[0] / 2, object.size[1], 28]} /> : <boxGeometry args={object.size} />}
-      <meshStandardMaterial color={materialColor} metalness={0.15} roughness={0.4} />
-      <Edges scale={selected ? 1.06 : 1.001} threshold={20} color={selected ? '#ffffff' : object.color} />
-    </mesh>
+  const vesselProfile = useMemo(() => {
+    const radius = object.size[0] / 2, halfHeight = object.size[1] / 2;
+    const isCup = object.semanticType === 'cup';
+    const top = radius * (isCup ? 0.64 : 1), bottom = radius * (isCup ? 0.61 : 0.56);
+    return [[0, -halfHeight], [bottom, -halfHeight], [top, halfHeight], [top - 0.014, halfHeight], [bottom - 0.014, -halfHeight + 0.018], [0, -halfHeight + 0.018]].map(([x, y]) => new Vector2(x, y));
+  }, [object.size[0], object.size[1], object.semanticType]);
+  const vessel = object.semanticType === 'cup' || object.semanticType === 'bowl';
+  const sample = object.semanticType?.includes('sample');
+  return <group position={object.position} onClick={event => { event.stopPropagation(); onSelect(object.id); }} onPointerOver={event => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
+    {vessel ? <>
+      <mesh castShadow receiveShadow>
+        <latheGeometry args={[vesselProfile, 40]} />
+        <meshStandardMaterial color={materialColor} metalness={0.08} roughness={0.3} />
+        {selected && <Edges scale={1.015} threshold={30} color="#ffffff" />}
+      </mesh>
+      {object.semanticType === 'cup' && <mesh position={[object.size[0] * 0.295, 0, 0]} castShadow>
+        <torusGeometry args={[object.size[0] * 0.15, 0.006, 12, 28]} />
+        <meshStandardMaterial color={materialColor} metalness={0.08} roughness={0.3} />
+      </mesh>}
+    </> : <>
+      <mesh castShadow receiveShadow position={sample ? [0, -object.size[1] * 0.09, 0] : [0, 0, 0]}>
+        {object.kind === 'cylinder' ? <cylinderGeometry args={[object.size[0] / 2, object.size[0] / 2, object.size[1] * (sample ? 0.82 : 1), 28]} /> : <boxGeometry args={[object.size[0], object.size[1] * (sample ? 0.82 : 1), object.size[2]]} />}
+        <meshStandardMaterial color={materialColor} metalness={sample ? 0.24 : 0.15} roughness={0.4} />
+        <Edges scale={selected ? 1.06 : 1.001} threshold={20} color={selected ? '#ffffff' : object.color} />
+      </mesh>
+      {sample && <>
+        <mesh position={[0, object.size[1] * 0.41, 0]} castShadow>
+          {object.kind === 'cylinder' ? <cylinderGeometry args={[object.size[0] / 2, object.size[0] / 2, object.size[1] * 0.18, 28]} /> : <boxGeometry args={[object.size[0], object.size[1] * 0.18, object.size[2]]} />}
+          <meshStandardMaterial color="#d8dee0" metalness={0.6} roughness={0.4} />
+        </mesh>
+        <Text font="/fonts/ibm-plex-sans-regular.ttf" position={[0, object.size[1] / 2 + 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.047} maxWidth={object.size[0] * 0.9} color="#33434d" anchorX="center" anchorY="middle">{object.semanticType === 'sample-alpha' ? 'ALPHA' : object.semanticType === 'sample-beta' ? 'BETA' : 'REF'}</Text>
+      </>}
+      {object.semanticType === 'utensil-case' && <mesh position={[0, object.size[1] / 2 + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[object.size[0] * 0.72, object.size[2] * 0.48]} />
+        <meshStandardMaterial color="#d5d7cd" metalness={0.4} roughness={0.45} />
+      </mesh>}
+    </>}
     {selected && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -object.size[1] / 2 + 0.005, 0]}>
       <ringGeometry args={[0.2, 0.215, 48]} /><meshBasicMaterial color="#f0b17f" transparent opacity={0.9} />
     </mesh>}
-    {selected && <Html position={[0, object.size[1] / 2 + 0.23, 0]} center style={{ pointerEvents: 'none' }}>
-      <div className={`sim-object-label${selected ? ' sim-object-label--selected' : ''}`}><i style={{ background: object.color }} />{object.label}</div>
-    </Html>}
+    {selected && <Billboard position={[0, object.size[1] / 2 + 0.23, 0]}><Text font="/fonts/ibm-plex-sans-regular.ttf" fontSize={0.075} maxWidth={1.8} color="#f0d0b5" outlineColor="#171717" outlineWidth={0.006} anchorX="center" anchorY="middle">{object.label}</Text></Billboard>}
+  </group>;
+}
+
+/** Decorative task fixtures share the controller's unchanged tray geometry. */
+function EnvironmentFixtures({ environmentId }: { environmentId?: string }) {
+  if (environmentId === 'kitchen') return <group>
+    <mesh position={[-0.25, TABLE_TOP + 0.003, -0.05]} receiveShadow><boxGeometry args={[1.75, 0.006, 1.65]} /><meshStandardMaterial color="#c5c2ad" roughness={0.95} /></mesh>
+    <mesh position={[0, TABLE_TOP + 0.17, -1.37]} receiveShadow><boxGeometry args={[4.1, 0.34, 0.06]} /><meshStandardMaterial color="#ced1c8" roughness={0.6} /></mesh>
+    {[-1.5, -0.75, 0, 0.75, 1.5].map(x => <mesh key={x} position={[x, TABLE_TOP + 0.17, -1.338]}><boxGeometry args={[0.006, 0.34, 0.002]} /><meshStandardMaterial color="#a4afaa" /></mesh>)}
+    <mesh position={[1.88, TABLE_TOP + 0.012, -1.03]}><boxGeometry args={[0.28, 0.024, 0.35]} /><meshStandardMaterial color="#b38d62" roughness={0.95} /></mesh>
+  </group>;
+  if (environmentId === 'lab') return <group>
+    <mesh position={[-0.34, TABLE_TOP + 0.003, -0.05]} receiveShadow><boxGeometry args={[1.55, 0.006, 1.60]} /><meshStandardMaterial color="#829da5" roughness={0.9} /></mesh>
+    <mesh position={[1.90, TABLE_TOP + 0.13, -1.10]} castShadow receiveShadow><boxGeometry args={[0.30, 0.26, 0.31]} /><meshStandardMaterial color="#d2dadb" metalness={0.3} roughness={0.5} /></mesh>
+    <mesh position={[1.90, TABLE_TOP + 0.14, -0.942]}><boxGeometry args={[0.21, 0.10, 0.006]} /><meshStandardMaterial color="#263c48" roughness={0.4} /></mesh>
+    <mesh position={[1.98, TABLE_TOP + 0.07, -0.936]}><sphereGeometry args={[0.012, 12, 12]} /><meshStandardMaterial color="#91c4b3" emissive="#4d977f" emissiveIntensity={0.35} /></mesh>
+    <mesh position={[-0.30, TABLE_TOP + 0.004, 0.40]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.20, 0.21, 4]} /><meshStandardMaterial color="#d6e4df" /></mesh>
+  </group>;
+  return <group>
+    <mesh position={[-0.25, TABLE_TOP + 0.003, -0.05]} receiveShadow><boxGeometry args={[1.75, 0.006, 1.65]} /><meshStandardMaterial color="#627c88" roughness={0.95} /></mesh>
+    <mesh position={[1.88, TABLE_TOP + 0.015, -1.04]} receiveShadow><boxGeometry args={[0.28, 0.03, 0.36]} /><meshStandardMaterial color="#4d5d65" roughness={0.7} /></mesh>
+    {[0, 1, 2].map(index => <mesh key={index} position={[1.79 + index * 0.085, TABLE_TOP + 0.037, -1.04]}><boxGeometry args={[0.022, 0.014, 0.24 - index * 0.04]} /><meshStandardMaterial color="#b1b9bb" metalness={0.8} roughness={0.3} /></mesh>)}
   </group>;
 }
 
@@ -176,27 +227,32 @@ function TableGrid() {
 }
 
 function Workcell({ world, selectedId, onSelect, showGrid, showPath, targetPosition }: Pick<RobotSceneProps, 'world' | 'selectedId' | 'onSelect' | 'showGrid' | 'showPath' | 'targetPosition'>) {
+  const family = world.baseEnvironmentId ?? world.environmentId;
+  const environment = ENVIRONMENTS.find(candidate => candidate.id === family);
   const pathTarget = targetPosition ?? world.motion?.phases.at(-3)?.position;
   const path = pathTarget ? [world.robot.position, [world.robot.position[0], 1.7, world.robot.position[2]] as Vec3, [pathTarget[0], 1.7, pathTarget[2]] as Vec3, pathTarget] : null;
   return <>
-    <color attach="background" args={['#252b30']} />
-    <fog attach="fog" args={['#252b30', 13, 28]} />
+    <color attach="background" args={['#18191b']} />
+    <fog attach="fog" args={['#18191b', 13, 28]} />
     <ambientLight intensity={0.75} />
-    <hemisphereLight args={['#edf4fa', '#34383a', 1.05]} />
+    <hemisphereLight args={['#eeeeee', '#292929', 1.05]} />
     <directionalLight position={[1, 7, 4]} intensity={2.7} castShadow shadow-mapSize={[1536, 1536]} shadow-camera-left={-4} shadow-camera-right={4} shadow-camera-top={4} shadow-camera-bottom={-4} shadow-bias={-0.0005} />
-    <directionalLight position={[-4, 3, -3]} color="#a3c4e2" intensity={1.25} />
-    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}><planeGeometry args={[50, 50]} /><meshStandardMaterial color="#252b30" roughness={0.95} /></mesh>
-    {showGrid && <gridHelper args={[18, 36, '#485057', '#353e45']} position={[0, 0.001, 0]} />}
+    <directionalLight position={[-4, 3, -3]} color="#dedede" intensity={1.25} />
+    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}><planeGeometry args={[50, 50]} /><meshStandardMaterial color="#18191b" roughness={0.95} /></mesh>
+    {showGrid && <gridHelper args={[18, 36, '#404040', '#303030']} position={[0, 0.001, 0]} />}
     <RoundedBox args={[4.35, 0.1, 2.8]} radius={0.045} smoothness={3} position={[0, TABLE_TOP - 0.05, 0]} castShadow receiveShadow>
-      <meshStandardMaterial color="#8a979e" metalness={0.52} roughness={0.58} />
+      <meshStandardMaterial color={family === 'kitchen' ? '#b9bcb4' : family === 'lab' ? '#bac6c9' : '#8a979e'} metalness={family === 'kitchen' ? 0.18 : 0.52} roughness={0.58} />
     </RoundedBox>
     <mesh position={[0, TABLE_TOP - 0.13, 0]} castShadow><boxGeometry args={[4.1, 0.15, 2.55]} /><meshStandardMaterial color="#3a4349" metalness={0.6} roughness={0.4} /></mesh>
     {[-1.8, 1.8].flatMap(x => [-1.05, 1.05].map(z => <mesh key={`${x}-${z}`} position={[x, 0.31, z]} castShadow><boxGeometry args={[0.12, 0.64, 0.12]} /><meshStandardMaterial color="#647079" metalness={0.8} roughness={0.45} /></mesh>))}
     {showGrid && <TableGrid />}
+    <EnvironmentBackdrop family={family}/>
+    <EnvironmentFixtures environmentId={family} />
     <mesh position={[-1.85, TABLE_TOP + 0.008, -1.12]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[0.13, 0.12]} /><meshBasicMaterial color="#e4b55d" /></mesh>
-    <Html position={[-1.3, TABLE_TOP + 0.015, -1.18]} center transform rotation={[-Math.PI / 2, 0, 0]} distanceFactor={3}><div className="sim-workcell-label">WORKCELL 01 / DEMONSTRATION LAB</div></Html>
-    {DESTINATIONS.map(tray => <Tray key={tray.id} {...tray} />)}
+    <Text font="/fonts/ibm-plex-sans-regular.ttf" position={[-0.85, TABLE_TOP + 0.015, -1.18]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.045} maxWidth={2.4} color="#394349" anchorX="center" anchorY="middle">{world.customTask ? world.customTask.title.toUpperCase() : environment ? `${environment.id.toUpperCase()} / ${environment.name.toUpperCase()}` : 'WORKCELL 01 / DEMONSTRATION LAB'}</Text>
+    {DESTINATIONS.map(tray => <Tray key={tray.id} {...tray} label={world.destinationLabels?.[tray.id] ?? tray.label} />)}
     <Robot world={world} />
+    <HumanPresenceProxy state={world.humanPresence?.state ?? 'clear'}/>
     {world.objects.map(object => <Part key={object.id} object={object} selected={selectedId === object.id} onSelect={onSelect} />)}
     {showPath && path && <Line points={path} color="#f1ad79" lineWidth={1.6} dashed dashSize={0.065} gapSize={0.045} transparent opacity={0.8} />}
     {showPath && pathTarget && <mesh position={[pathTarget[0], TABLE_TOP + 0.08, pathTarget[2]]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.18, 0.19, 40]} /><meshBasicMaterial color="#ffc087" transparent opacity={0.9} /></mesh>}
@@ -206,10 +262,10 @@ function Workcell({ world, selectedId, onSelect, showGrid, showPath, targetPosit
 
 export function RobotScene(props: RobotSceneProps) {
   return <div className="robot-scene" data-testid="robot-scene">
-    <Canvas shadows camera={{ position: [4.9, 4, 5.5], fov: 42, near: 0.05, far: 60 }} dpr={[1, 1.75]} gl={{ antialias: true, alpha: false, preserveDrawingBuffer: true }} onPointerMissed={() => props.onSelect(null)}>
+    <Canvas frameloop="demand" shadows camera={{ position: [4.9, 4, 5.5], fov: 42, near: 0.05, far: 60 }} dpr={[1, 1.75]} gl={{ antialias: true, alpha: false, preserveDrawingBuffer: true }} onPointerMissed={() => props.onSelect(null)}>
       <Suspense fallback={null}>
         <Workcell {...props} />
-        <CameraRig view={props.view} onReady={props.onReady} />
+        <CameraRig view={props.view} onReady={props.onReady} humanPresent={props.world.humanPresence?.state === 'nearby' || props.world.humanPresence?.state === 'in-workspace'} />
       </Suspense>
     </Canvas>
   </div>;

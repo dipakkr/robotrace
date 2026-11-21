@@ -52,39 +52,48 @@ export async function getIntegrationStatus(): Promise<IntegrationStatus> {
 
 let activeConnection: VoiceConnection | null = null;
 let connectionStarting = false;
+let voiceGeneration = 0;
+let pendingStop: (() => Promise<void>) | null = null;
 
 export async function startVoiceSession(
   onCommand: (command: string) => Promise<VoiceCommandResult> | VoiceCommandResult,
   options: VoiceOptions = {},
 ): Promise<VoiceConnection> {
   if (activeConnection || connectionStarting) throw new Error('A voice session is already connected or starting.');
-  const integration = await getIntegrationStatus();
-  if (!integration.configured) {
-    throw new Error(integration.available
+  connectionStarting = true;
+  const generation = voiceGeneration;
+  let client: import('agora-rtc-sdk-ng').IAgoraRTCClient;
+  try {
+    const integration = await getIntegrationStatus();
+    if (!integration.configured) throw new Error(integration.available
       ? 'Agora + Murf voice needs server credentials and a public HTTPS tool callback. Configure .env.local and restart the API.'
       : 'Start the local API server to configure Agora + Murf voice. Typed commands remain available.');
-  }
-  options.onStatus?.('connecting');
-  const { default: AgoraRTC } = await import('agora-rtc-sdk-ng');
-  AgoraRTC.setLogLevel(3);
-  const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-  if (activeConnection || connectionStarting) throw new Error('Another voice connection has started.');
-  connectionStarting = true;
-  let microphone: Awaited<ReturnType<typeof AgoraRTC.createMicrophoneAudioTrack>> | undefined;
+    if (generation !== voiceGeneration) throw new Error('Voice connection cancelled.');
+    options.onStatus?.('connecting');
+    const { default: AgoraRTC } = await import('agora-rtc-sdk-ng');
+    if (generation !== voiceGeneration) throw new Error('Voice connection cancelled.');
+    AgoraRTC.setLogLevel(3);
+    client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+  } catch (error) { connectionStarting = false; throw error; }
+  let microphone: import('agora-rtc-sdk-ng').IMicrophoneAudioTrack | undefined;
   let sessionId = '';
   let events: EventSource | undefined;
   let snapshotTimer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
   let agentAudioConnected = false;
 
+  const onPageHide = () => {
+    if (sessionId && !stopped) navigator.sendBeacon('/api/voice/stop', new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }));
+  };
   const stop = async () => {
     if (stopped) return;
     stopped = true;
+    window.removeEventListener('pagehide', onPageHide);
     events?.close();
     clearInterval(snapshotTimer);
     microphone?.stop(); microphone?.close();
     await client.leave().catch(() => {});
-    activeConnection = null;
+    if (activeConnection?.stop === stop) activeConnection = null;
     let remoteStopError = '';
     if (sessionId) {
       try { await jsonRequest('/api/voice/stop', { sessionId }); }
@@ -94,23 +103,29 @@ export async function startVoiceSession(
     if (remoteStopError) throw new Error(remoteStopError);
   };
 
+  pendingStop = stop;
   client.on('user-published', async (user, mediaType) => {
     if (mediaType !== 'audio' || stopped) return;
     try {
       await client.subscribe(user, mediaType);
+      if (stopped || generation !== voiceGeneration) return;
       user.audioTrack?.play();
       agentAudioConnected = true;
       options.onStatus?.('live', 'Agora agent audio is connected; speech output uses Murf Falcon.');
-    } catch { options.onStatus?.('error', 'Agent audio subscription failed.'); }
+    } catch { if (!stopped && generation === voiceGeneration) options.onStatus?.('error', 'Agent audio subscription failed.'); }
   });
   client.on('connection-state-change', state => {
     if (state === 'DISCONNECTED' && !stopped) options.onStatus?.('error', 'Agora RTC disconnected. End the session before reconnecting.');
   });
 
   try {
+    const { default: AgoraRTC } = await import('agora-rtc-sdk-ng');
     microphone = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+    if (stopped || generation !== voiceGeneration) throw new Error('Voice connection cancelled.');
     const session = await jsonRequest<{ sessionId: string; appId: string; channel: string; token: string; uid: number }>('/api/voice/start', { world: options.getWorld?.() ?? null });
     sessionId = session.sessionId;
+    if (stopped || generation !== voiceGeneration) { await jsonRequest('/api/voice/stop', { sessionId }); throw new Error('Voice connection cancelled.'); }
+    window.addEventListener('pagehide', onPageHide);
     events = new EventSource(`/api/voice/events?sessionId=${encodeURIComponent(sessionId)}`);
     events.addEventListener('command', async event => {
       const instruction = JSON.parse((event as MessageEvent<string>).data) as { id: string; command: string };
@@ -127,24 +142,35 @@ export async function startVoiceSession(
     });
     events.onerror = () => { if (!stopped) options.onStatus?.('error', 'Simulator command bridge disconnected. Voice motion outcomes may be unconfirmed.'); };
     await client.join(session.appId, session.channel, session.token, session.uid);
+    if (stopped || generation !== voiceGeneration) throw new Error('Voice connection cancelled.');
     await client.publish([microphone]);
+    if (stopped || generation !== voiceGeneration) throw new Error('Voice connection cancelled.');
     if (!agentAudioConnected) options.onStatus?.('connected', 'RTC joined. Waiting for the conversational agent audio.');
     snapshotTimer = setInterval(() => {
       if (options.getWorld && !stopped) jsonRequest('/api/voice/context', { sessionId, world: options.getWorld() }).catch(() => {});
     }, 1000);
     activeConnection = { sessionId, stop };
+    pendingStop = null;
     connectionStarting = false;
     return activeConnection;
   } catch (error) {
-    connectionStarting = false;
+    const cancelled = stopped || generation !== voiceGeneration;
     await stop().catch(() => {});
-    options.onStatus?.('error', error instanceof Error ? error.message : 'Voice connection failed.');
+    // A reset can happen while microphone creation or RTC join is awaiting.
+    // Dispose resources that arrive after the first idempotent stop completed.
+    try { microphone?.stop(); microphone?.close(); } catch { /* Already closed. */ }
+    await client.leave().catch(() => {});
+    if (pendingStop === stop) pendingStop = null;
+    connectionStarting = false;
+    if (!cancelled) options.onStatus?.('error', error instanceof Error ? error.message : 'Voice connection failed.');
     throw error;
   }
 }
 
 export async function stopVoiceSession(): Promise<void> {
-  await activeConnection?.stop();
+  voiceGeneration++;
+  if (activeConnection) await activeConnection.stop();
+  else await pendingStop?.();
 }
 
 export interface VoiceAnnouncementResult {
@@ -176,3 +202,6 @@ export async function announceVoiceProgress(text: string): Promise<VoiceAnnounce
 export async function saveEpisodeToServer(episode: unknown): Promise<{ id: string; savedAt: string; saved: boolean; storage: string }> {
   return jsonRequest('/api/episodes', episode);
 }
+
+// Release the remote session when Vite replaces this module during development.
+if (import.meta.hot) import.meta.hot.dispose(() => { void stopVoiceSession().catch(() => {}); });

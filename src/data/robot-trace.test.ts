@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createArmTrace } from './robot-trace';
+import { ARM_LINKS, createInitialWorld, solveArmIK } from '../sim/engine';
+test('exported arm joint and link coordinates are computed from the exact recorded renderer state',()=>{const world=createInitialWorld();const before=structuredClone(world),ik=solveArmIK(world.robot.position);const trace=createArmTrace([{time:0,world}]);assert.deepEqual(trace.samples[0].joints.positionsRadians,[ik.yaw,ik.shoulderAngle,-ik.elbowAngle]);assert.deepEqual(trace.samples[0].links.elbow,ik.elbow);assert.deepEqual(trace.samples[0].endEffector.position,world.robot.position);assert.equal(trace.measuredMotorTelemetry,false);assert.deepEqual(world,before);});
+
+test('exported signed joint angles independently reconstruct the rendered wrist',()=>{const world=createInitialWorld();for(const tcp of [world.robot.position,[-.8,1.1,.4],[1.1,1.25,-.2]] as [number,number,number][]){world.robot.position=tcp;const sample=createArmTrace([{time:0,world}]).samples[0];const [yaw,shoulder,elbow]=sample.joints.positionsRadians;const [x,y,z]=sample.links.shoulder;const radial=ARM_LINKS[0]*Math.cos(shoulder)+ARM_LINKS[1]*Math.cos(shoulder+elbow);const computed=[x+Math.cos(yaw)*radial,y+ARM_LINKS[0]*Math.sin(shoulder)+ARM_LINKS[1]*Math.sin(shoulder+elbow),z+Math.sin(yaw)*radial];for(let axis=0;axis<3;axis++)assert.ok(Math.abs(computed[axis]-sample.links.wrist[axis])<1e-6);}});

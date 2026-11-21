@@ -1,9 +1,16 @@
 import http from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, writeFile, rename, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildAgentConfig, configuration, TASK_GUIDE } from './config.mjs';
+import { buildAgentConfig, configuration } from './config.mjs';
+import { taskGuideForEnvironment, taskGuideForWorld } from './task-guides.mjs';
+import { agoraAuthorization } from './auth.mjs';
+import { createMobileEvidenceStore } from './mobile-store.mjs';
+import { createWorkflowStore } from './workflows.mjs';
+import { createPlannerService } from './planner-models.mjs';
+import { generateMobileCandidate } from './mobile-planner.mjs';
+import { evaluateMobilePlanOnServer, evaluatePlanOnServer } from './simulation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BODY_LIMIT = 1024 * 1024;
@@ -29,18 +36,26 @@ function authorized(header, secret) {
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
-export function createApiServer({ env = process.env, fetchImpl = fetch, dataDirectory = resolve(HERE, '../.local/episodes') } = {}) {
+export function createApiServer({ env = process.env, fetchImpl = fetch, dataDirectory = resolve(HERE, '../.local/episodes'), voiceTimings = {} } = {}) {
+  const workflows = createWorkflowStore({ dataDirectory });
+  const mobileEvidence = createMobileEvidenceStore({ dataDirectory });
+  const planner = createPlannerService({ env, fetchImpl });
   const sessions = new Map();
-  let sessionStarting = false;
+  const pendingStops = new Set();
+  let sessionStarting = null;
+  let sessionGeneration = 0;
+  let resetInProgress = null;
+  const grace = (value, fallback) => Number.isFinite(value) && value >= 1 ? value : fallback;
+  const startupGraceMs = grace(voiceTimings.startupGraceMs, 20000);
+  const reconnectGraceMs = grace(voiceTimings.reconnectGraceMs, 10000);
   const origin = env.FRONTEND_ORIGIN || 'http://localhost:5189';
   const allowedOrigins = new Set([origin]);
   try { const local = new URL(origin); if (local.hostname === 'localhost') { local.hostname = '127.0.0.1'; allowedOrigins.add(local.origin); } else if (local.hostname === '127.0.0.1') { local.hostname = 'localhost'; allowedOrigins.add(local.origin); } } catch { /* Invalid origins remain denied. */ }
 
   async function agora(path, payload) {
-    const credentials = Buffer.from(`${env.AGORA_CUSTOMER_ID}:${env.AGORA_CUSTOMER_SECRET}`).toString('base64');
     const response = await fetchImpl(`https://api.agora.io/api/conversational-ai-agent/v2/projects/${env.AGORA_APP_ID}/${path}`, {
       method: 'POST', signal: AbortSignal.timeout(20000),
-      headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: agoraAuthorization(env, payload), 'Content-Type': 'application/json' },
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     });
     if (!response.ok) {
@@ -52,16 +67,46 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
   }
 
   function closeLocalSession(session) {
+    session.closed = true;
+    clearTimeout(session.disconnectCleanup);
+    clearTimeout(session.expiry);
+    sessions.delete(session.id);
     for (const pending of session.pending.values()) pending.resolve({ completed: false, error: 'Voice session closed; motion outcome is unconfirmed.' });
     session.pending.clear();
     for (const client of session.clients) client.end();
-    clearTimeout(session.expiry);
-    sessions.delete(session.id);
+    session.clients.clear();
   }
 
-  async function stopSession(session) {
-    try { await agora(`agents/${encodeURIComponent(session.agentId)}/leave`); }
-    finally { closeLocalSession(session); }
+  function stopSession(session) {
+    if (session.stopping) return session.stopping;
+    closeLocalSession(session);
+    session.stopping = agora(`agents/${encodeURIComponent(session.agentId)}/leave`).finally(() => { pendingStops.delete(session.stopping); });
+    pendingStops.add(session.stopping);
+    return session.stopping;
+  }
+
+  function scheduleDisconnectCleanup(session, delay) {
+    clearTimeout(session.disconnectCleanup);
+    session.disconnectCleanup = setTimeout(() => {
+      if (!session.closed && !session.clients.size) stopSession(session).catch(() => {});
+    }, delay);
+    session.disconnectCleanup.unref();
+  }
+
+  function resetVoiceSessions() {
+    if (resetInProgress) return resetInProgress;
+    sessionGeneration += 1;
+    const starting = sessionStarting;
+    for (const session of sessions.values()) stopSession(session);
+    const stopping = [...pendingStops];
+    resetInProgress = (async () => {
+      const outcomes = await Promise.allSettled(stopping);
+      // An invalidated join owns its lock until it returns and any late agent
+      // has been stopped. A new start cannot overtake that cleanup.
+      if (starting) await starting.done;
+      return { reset: true, stopped: true, cleanupVerified: outcomes.every(outcome => outcome.status === 'fulfilled') && (starting?.cleanupVerified ?? true) };
+    })().finally(() => { resetInProgress = null; });
+    return resetInProgress;
   }
 
   const server = http.createServer(async (req, res) => {
@@ -82,13 +127,60 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
       res.writeHead(204); res.end(); return;
     }
 
+    let ownedStart = null;
     try {
       if (req.method === 'GET' && url.pathname === '/api/integrations/status') {
         respond(res, 200, { available: true, ...configuration(env), dataset: true }); return;
       }
 
       if (req.method === 'GET' && url.pathname === '/api/task-guide') {
-        respond(res, 200, TASK_GUIDE); return;
+        respond(res, 200, taskGuideForEnvironment(url.searchParams.get('environment'))); return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/planner/models') {
+        respond(res, 200, { models: planner.models() }); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/planner/plan') {
+        respond(res, 200, await planner.plan(await body(req))); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/scenes/draft') {
+        respond(res, 200, await planner.draft(await body(req))); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/mobile-planner/plan') {
+        const input = await body(req);
+        respond(res, 200, await generateMobileCandidate({ env, fetchImpl, model: input.model, world: input.world, command: input.command, goal: input.goal })); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/evaluations/mobile') {
+        respond(res, 200, await evaluateMobilePlanOnServer(await body(req))); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/evaluations/plan') {
+        respond(res, 200, await evaluatePlanOnServer(await body(req))); return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/mobile/episodes') {
+        respond(res, 200, { episodes: await mobileEvidence.list() }); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/mobile/episodes') {
+        respond(res, 201, await mobileEvidence.submit(await body(req))); return;
+      }
+      const mobileRecordRoute = url.pathname.match(/^\/api\/mobile\/episodes\/([^/]+)$/);
+      if (req.method === 'GET' && mobileRecordRoute) {
+        const record = await mobileEvidence.get(mobileRecordRoute[1]);
+        respond(res, record ? 200 : 404, record ? { record } : { error: 'Mobile record not found.' }); return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/assignments') {
+        respond(res, 200, { assignments: await workflows.listAssignments() }); return;
+      }
+      const assignmentRoute = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
+      if (req.method === 'GET' && assignmentRoute) {
+        const assignment = await workflows.getAssignment(assignmentRoute[1]);
+        respond(res, assignment ? 200 : 404, assignment ?? { error: 'Assignment not found.' }); return;
+      }
+      const reportRoute = url.pathname.match(/^\/api\/reports\/([^/]+)$/);
+      if (req.method === 'GET' && reportRoute) {
+        const report = await workflows.getReport(reportRoute[1]);
+        respond(res, report ? 200 : 404, report ?? { error: 'Report not found.' }); return;
       }
 
       if (url.pathname === '/api/episodes' && req.method === 'POST') {
@@ -103,7 +195,15 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const destination = resolve(dataDirectory, `${id}.json`);
         await writeFile(`${destination}.tmp`, JSON.stringify(record, null, 2), { mode: 0o600 });
         await rename(`${destination}.tmp`, destination);
-        respond(res, 201, { id, savedAt, saved: true, storage: 'local-server' }); return;
+        let workflow;
+        try { workflow = await workflows.submitApprovedEpisode({ episode, episodeId: id, savedAt }); }
+        catch (error) {
+          // Do not acknowledge a reviewed submission if its assignment/report
+          // commit fails. The prior assignment state remains intact.
+          await rm(destination, { force: true }).catch(() => {});
+          throw error;
+        }
+        respond(res, 201, { id, savedAt, saved: true, storage: 'local-server', ...(workflow ?? {}) }); return;
       }
 
       if (url.pathname === '/api/episodes' && req.method === 'GET') {
@@ -116,13 +216,27 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         respond(res, 200, { episodes: entries.sort((a, b) => b.savedAt.localeCompare(a.savedAt)) }); return;
       }
 
+      const episodeRoute = url.pathname.match(/^\/api\/episodes\/([a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12})$/i);
+      if (episodeRoute && req.method === 'GET') {
+        try {
+          const record = JSON.parse(await readFile(resolve(dataDirectory, `${episodeRoute[1]}.json`), 'utf8'));
+          respond(res, 200, record);
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+          respond(res, 404, { error: 'Episode not found.' });
+        }
+        return;
+      }
+
       if (url.pathname === '/api/voice/start' && req.method === 'POST') {
         const status = configuration(env);
         if (!status.configured) {
           respond(res, 503, { error: 'Live Agora + Murf voice is not configured. The local simulator remains available.', ...status }); return;
         }
-        if (sessions.size || sessionStarting) { respond(res, 409, { error: 'A voice session is already active or starting. End it before starting another.' }); return; }
-        sessionStarting = true;
+        if (sessions.size || sessionStarting || resetInProgress || pendingStops.size) { respond(res, 409, { error: 'A voice session is active, starting, or resetting. End or reset it before starting another.' }); return; }
+        let finishStart;
+        ownedStart = { generation: sessionGeneration, cleanupVerified: true, done: new Promise(resolveStart => { finishStart = resolveStart; }), finish: () => finishStart() };
+        sessionStarting = ownedStart;
         const input = await body(req);
         const tokenModule = await import('agora-token');
         const tokens = tokenModule.default || tokenModule;
@@ -134,6 +248,12 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const clientToken = token(1002);
         const result = await agora('join', buildAgentConfig({ env, id, channel, agentToken, toolSecret }));
         if (typeof result.agent_id !== 'string') throw Object.assign(new Error('Agora did not return an agent ID.'), { status: 502 });
+        if (ownedStart.generation !== sessionGeneration || res.destroyed) {
+          try { await agora(`agents/${encodeURIComponent(result.agent_id)}/leave`); }
+          catch { ownedStart.cleanupVerified = false; }
+          if (!res.destroyed) respond(res, 409, { error: 'Voice start was cancelled by a reset. Start a new session after reset completes.' });
+          return;
+        }
         const session = {
           id, agentId: result.agent_id, toolSecret, clients: new Set(), pending: new Map(), cache: new Map(),
           world: input.world || null, worldUpdatedAt: Date.now(),
@@ -142,8 +262,12 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         session.expiry = setTimeout(() => { stopSession(session).catch(() => {}); }, 30 * 60 * 1000);
         session.expiry.unref();
         sessions.set(id, session);
-        sessionStarting = false;
+        scheduleDisconnectCleanup(session, startupGraceMs);
         respond(res, 201, { sessionId: id, appId: env.AGORA_APP_ID, channel, uid: 1002, token: clientToken, expiresIn: 3600, providers: { transport: 'Agora RTC', conversation: 'Agora Conversational AI', tts: 'Murf Falcon' } }); return;
+      }
+
+      if (url.pathname === '/api/voice/reset' && req.method === 'POST') {
+        respond(res, 200, await resetVoiceSessions()); return;
       }
 
       if (url.pathname === '/api/voice/stop' && req.method === 'POST') {
@@ -194,10 +318,15 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
         const session = sessions.get(url.searchParams.get('sessionId'));
         if (!session) { respond(res, 404, { error: 'Voice session not found.' }); return; }
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-        res.write('event: ready\ndata: {}\n\n');
         session.clients.add(res);
+        clearTimeout(session.disconnectCleanup);
+        res.write('event: ready\ndata: {}\n\n');
         const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
-        req.on('close', () => { clearInterval(heartbeat); session.clients.delete(res); });
+        res.on('close', () => {
+          clearInterval(heartbeat);
+          session.clients.delete(res);
+          if (!session.closed && !session.clients.size) scheduleDisconnectCleanup(session, reconnectGraceMs);
+        });
         return;
       }
 
@@ -218,7 +347,7 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
           respond(res, 401, { error: 'Invalid tool-session credential.' }); return;
         }
         if (match[2] === 'context') {
-          respond(res, 200, { taskGuide: TASK_GUIDE, world: session.world, ageMs: Date.now() - session.worldUpdatedAt, connected: session.clients.size > 0 }); return;
+          respond(res, 200, { taskGuide: taskGuideForWorld(session.world), assignment: await workflows.assignmentForWorld(session.world), world: session.world, ageMs: Date.now() - session.worldUpdatedAt, connected: session.clients.size > 0 }); return;
         }
         const { command, toolCallId } = await body(req);
         if (typeof command !== 'string' || !command.trim() || command.length > 500 || typeof toolCallId !== 'string') {
@@ -246,12 +375,17 @@ export function createApiServer({ env = process.env, fetchImpl = fetch, dataDire
 
       respond(res, 404, { error: 'Endpoint not found.' });
     } catch (error) {
-      if (url.pathname === '/api/voice/start') sessionStarting = false;
+      if (ownedStart && ownedStart.generation !== sessionGeneration) ownedStart.cleanupVerified = false;
       respond(res, error.status || 500, { error: error.status ? error.message : 'The local API could not complete this request.' });
+    } finally {
+      if (ownedStart) {
+        if (sessionStarting === ownedStart) sessionStarting = null;
+        ownedStart.finish();
+      }
     }
   });
   server.closeVoiceSessions = async () => {
-    await Promise.allSettled([...sessions.values()].map(stopSession));
+    await resetVoiceSessions();
   };
   server.on('close', () => { for (const session of sessions.values()) closeLocalSession(session); });
   return server;

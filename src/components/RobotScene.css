@@ -1,1 +1,8 @@
-.robot-scene{position:absolute;inset:0;overflow:hidden;background:#252b30}.robot-scene canvas{display:block;touch-action:none}.sim-object-label{display:flex;align-items:center;gap:6px;white-space:nowrap;border:1px solid #ffffff22;background:#242b31dd;border-radius:4px;padding:5px 8px;color:#e4e9ed;font:500 11px/1.1 Inter,system-ui,sans-serif;letter-spacing:.01em;box-shadow:0 2px 8px #0002}.sim-object-label i{display:block;width:6px;height:6px;border-radius:2px}.sim-object-label--selected{border-color:#f7ac70;color:#fff}.sim-tray-label{white-space:nowrap;font:600 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.12em;color:#3f4b51}.sim-workcell-label{white-space:nowrap;font:600 8px/1.2 Inter,system-ui,sans-serif;letter-spacing:.13em;color:#58676f}.sim-base-label{font:700 13px/1.2 Inter,system-ui,sans-serif;letter-spacing:.08em;color:#4a575f;white-space:nowrap}
+.robot-scene { position: absolute; inset: 0; overflow: hidden; background: #2a2a2a; }
+.robot-scene canvas { display: block; touch-action: none; }
+.sim-object-label { display: flex; align-items: center; gap: 6px; white-space: nowrap; border: 1px solid #8a8a8a77; background: #1f1f1fed; border-radius: 4px; padding: 6px 8px; color: #ececec; font: 500 11px/1.2 var(--sans, system-ui, sans-serif); letter-spacing: .01em; box-shadow: 0 3px 12px #0005; }
+.sim-object-label i { display: block; width: 6px; height: 6px; border-radius: 2px; }
+.sim-object-label--selected { border-color: #edac79; color: #fff2e6; }
+.sim-tray-label { white-space: nowrap; font: 500 10px/1.2 var(--mono, monospace); letter-spacing: .09em; color: #414141; }
+.sim-workcell-label { white-space: nowrap; font: 500 8px/1.2 var(--mono, monospace); letter-spacing: .10em; color: #525252; }
+.sim-base-label { white-space: nowrap; font: 600 12px/1.2 var(--sans, system-ui, sans-serif); letter-spacing: .06em; color: #434343; }

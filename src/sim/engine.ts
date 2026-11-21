@@ -5,6 +5,7 @@ export type RobotMode = 'idle' | 'running' | 'paused' | 'stopped' | 'error';
 export interface SceneObject {
   id: string;
   label: string;
+  semanticType?: string;
   color: string;
   kind: 'cube' | 'cylinder' | 'block';
   position: Vec3;
@@ -42,6 +43,19 @@ export interface MotionState {
 }
 
 export interface WorldState {
+  humanPresence?: { state: 'clear' | 'nearby' | 'in-workspace'; source: 'scenario-proxy' };
+  environmentId?: string;
+  baseEnvironmentId?: 'workbench' | 'kitchen' | 'lab';
+  customTask?: {
+    id?: string;
+    title: string;
+    instruction: string;
+    assignments: { objectId: string; destination: DestinationId; unchanged?: boolean }[];
+  };
+  sceneProvenance?: { source: 'deterministic' | 'ai-draft' | 'import'; prompt?: string; model?: string; reviewRequired: boolean; reviewed?: boolean;
+    derivation?: { parentSceneSha256: string; seed: number; index: number; kind: 'layout' | 'reach-challenge' | 'human-occupied'; basis: 'seeded-simulator-variation'; identityVerified: false };
+    reference?: { kind: 'image' | 'selected-video-frame'; sha256: string; frameTimeSeconds?: number; calibrated: false; rightsVerified: false; basis: 'submitted-reference-frame' } };
+  destinationLabels?: Record<DestinationId, string>;
   objects: SceneObject[];
   robot: RobotState;
   simTime: number;
@@ -64,10 +78,10 @@ export interface CommandPlan {
   steps: ActionStep[];
   confirmationRequired: boolean;
   error?: string;
-  control?: 'pause' | 'resume' | 'stop' | 'reset';
+  control?: 'pause' | 'resume' | 'stop' | 'reset' | 'human-nearby' | 'human-enter' | 'human-clear';
 }
 
-export interface AdvanceResult { world: WorldState; done: boolean; error?: string }
+export interface AdvanceResult { world: WorldState; done: boolean; error?: string; blocked?: string }
 
 export const TABLE_TOP = 0.78;
 export const ARM_BASE: Vec3 = [-1.47, 1.12, 0.32];
@@ -103,26 +117,79 @@ export function destinationPosition(id: DestinationId, slot = 0): Vec3 {
 
 /** An object-centric, bounded command planner. No ungrounded object creation. */
 export function planCommand(text: string, world: WorldState): CommandPlan {
-  const command = text.toLowerCase().trim();
+  const command = text.toLowerCase().trim().replace(/\s+/g, ' ');
   const base = { steps: [] as ActionStep[], confirmationRequired: false };
   if (!command) return { ...base, summary: 'Enter a command.', error: 'A command is required.' };
+  const scenarioCommand = command.replace(/^please /, '').replace(/[.!?]+$/, '');
+  if (/^(?:simulate (?:a )?(?:person|human) nearby|(?:a )?(?:person|human) (?:is )?nearby)$/.test(scenarioCommand)) {
+    return { ...base, summary: 'Simulate a person nearby. This scenario state does not block the controller.', control: 'human-nearby' };
+  }
+  if (/^(?:simulate (?:a )?(?:person|human) (?:entering|in) (?:the )?workspace|(?:a )?(?:person|human) (?:enters|entered|is entering)(?: (?:the )?workspace)?)$/.test(scenarioCommand)) {
+    return { ...base, summary: 'Simulate a person in the workspace. The software scenario interlock holds attempted motion.', control: 'human-enter' };
+  }
+  if (/^(?:clear (?:the )?human workspace(?: scenario)?|(?:the )?(?:person|human) (?:leaves|left)(?: (?:the )?workspace)?)$/.test(scenarioCommand)) {
+    return { ...base, summary: 'Clear the human workspace scenario. A paused robot still needs an explicit resume.', control: 'human-clear' };
+  }
   if (/^(pause|hold|hold on|wait|freeze)\b/.test(command)) return { ...base, summary: 'Pause the current motion.', control: 'pause' };
   if (/^(resume|continue|carry on)\b/.test(command)) return { ...base, summary: 'Resume the paused motion.', control: 'resume' };
   if (/^(stop|emergency stop|abort|cancel)\b/.test(command)) return { ...base, summary: 'Stop motion and hold the current position.', control: 'stop' };
   if (/^(reset|restart|restore)\b/.test(command)) return { ...base, summary: 'Reset the workcell to its initial scene.', control: 'reset', confirmationRequired: true };
   if (/\b(home|park)\b/.test(command)) return { ...base, summary: 'Return the empty gripper to its home pose.', steps: [{ id: 'home', kind: 'home', label: 'Return to home pose' }] };
 
+  const phrasePattern = (phrase: string) => new RegExp(`(?<![\\w-])${phrase.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'g');
+  const destinationName = (id: DestinationId) => world.destinationLabels?.[id] ?? (id === 'reject' ? 'review tray' : id.replace('-', ' '));
+  const buildPlan = (assignments: { object: SceneObject; target: DestinationId }[], summary?: string): CommandPlan => {
+    const moves = assignments.filter(({ object, target }) => object.location !== target);
+    if (!moves.length) return { ...base, summary: 'The selected objects are already at the requested destination.', error: 'No motion needed. Choose another destination or reset the scene.' };
+    const steps: ActionStep[] = moves.map(({ object, target }, index) => ({
+      id: `pick-${world.revision}-${index}-${object.id}-${target}`, kind: 'pick_place',
+      label: `Move ${object.label.toLowerCase()} to ${destinationName(target)}`, objectId: object.id, destination: target,
+    }));
+    return { summary: summary ?? `${steps.map(step => step.label).join('; ')}.`, steps, confirmationRequired: moves.some(({ target }) => target === 'reject') };
+  };
+  if (world.customTask && [world.customTask.instruction.toLowerCase().replace(/[.!?]+$/, ''), 'complete scene task', 'run scene task'].includes(command.replace(/^please /, '').replace(/[.!?]+$/, ''))) {
+    const targets = world.customTask.assignments.filter(target => !target.unchanged);
+    const assignments = targets.map(target => ({ object: world.objects.find(object => object.id === target.objectId), target: target.destination }));
+    if (!assignments.length || assignments.some(({ object, target }) => !object || object.status === 'in-transit' || !['table', 'tray-a', 'tray-b', 'reject'].includes(target))) return { ...base, summary: 'The authored task cannot be grounded.', error: 'A task object or destination is unavailable. Review the scene draft.' };
+    return buildPlan(assignments as { object: SceneObject; target: DestinationId }[]);
+  }
+  // These named assignments are explicit, scene-specific recipes, not generated robot skills.
+  const namedTasks: { phrase: string; environment: string; targets: [string, DestinationId][] }[] = [
+    { phrase: 'clear the counter', environment: 'kitchen', targets: [['part-red', 'tray-a'], ['part-blue', 'tray-a'], ['part-green', 'tray-b']] },
+    { phrase: 'route the samples', environment: 'lab', targets: [['part-red', 'tray-a'], ['part-blue', 'tray-b']] },
+    { phrase: 'prepare repair kit', environment: 'workbench', targets: [['part-red', 'tray-a'], ['part-blue', 'tray-b'], ['part-green', 'tray-a']] },
+  ];
+  const task = namedTasks.find(item => command.replace(/^please /, '').replace(/[.!?]+$/, '') === item.phrase);
+  if (task) {
+    if (world.environmentId !== task.environment) return { ...base, summary: 'Choose the matching environment first.', error: `This assignment belongs to the ${task.environment} environment.` };
+    const assignments = task.targets.map(([id, target]) => ({ object: world.objects.find(object => object.id === id), target }));
+    if (assignments.some(({ object }) => !object || object.status === 'in-transit')) return { ...base, summary: 'The assignment cannot be grounded in this scene.', error: 'A required object is missing or already in transit. Finish the current motion or reload this environment.' };
+    return buildPlan(assignments as { object: SceneObject; target: DestinationId }[]);
+  }
+
+  const aliases = [...new Set(world.objects.flatMap(object => [object.id.toLowerCase(), object.label.toLowerCase()]))].sort((a, b) => b.length - a.length);
+  let unnamedCommand = command;
+  const namedObjects: SceneObject[] = [];
+  for (const alias of aliases) {
+    if (!phrasePattern(alias).test(unnamedCommand)) continue;
+    const matching = world.objects.filter(object => object.id.toLowerCase() === alias || object.label.toLowerCase() === alias);
+    if (matching.length > 1) return { ...base, summary: 'Please identify the object.', error: `More than one object is named “${alias}”. Use its exact object ID.` };
+    namedObjects.push(...matching);
+    unnamedCommand = unnamedCommand.replace(phrasePattern(alias), ' ');
+  }
+
   const colorNames = ['red', 'blue', 'green'];
-  const unsupportedColor = command.match(/\b(purple|yellow|orange|pink|black|white|brown|grey|gray|violet)\b/);
+  const hasColor = (object: SceneObject, color: string) => object.color.toLowerCase() === ({ red: '#e66c52', blue: '#5594c6', green: '#83a993' }[color]);
+  const unsupportedColor = unnamedCommand.match(/\b(purple|yellow|orange|pink|black|white|brown|grey|gray|violet)\b/);
   if (unsupportedColor) return { ...base, summary: 'That object is not available in this scene.', error: `There is no ${unsupportedColor[1]} part in this workcell. The available parts are red, blue, and green.` };
-  const requestedColors = colorNames.filter(color => new RegExp(`\\b${color}\\b`).test(command));
+  const requestedColors = colorNames.filter(color => new RegExp(`\\b${color}\\b`).test(unnamedCommand));
   const isSort = /\bsort\b/.test(command);
   const allRequested = /\b(all|everything|every|prepare|pack|collect|clear)\b/.test(command) || isSort;
   const available = world.objects.filter(object => object.status !== 'in-transit');
-  let selected: SceneObject[] = [];
+  let selected: SceneObject[] = namedObjects.filter(object => object.status !== 'in-transit');
   if (requestedColors.length) {
     for (const color of requestedColors) {
-      const matching = available.filter(object => object.id.includes(color));
+      const matching = available.filter(object => hasColor(object, color));
       if (!matching.length) return { ...base, summary: 'That object is not available in the current scene.', error: `There is no available ${color} block in the current scene.` };
       const numbered = [...command.matchAll(new RegExp(`\\b${color}\\s+(?:block|part|cube)\\s*(?:number\\s*)?(\\d+)\\b`, 'g'))].map(match => Number(match[1]));
       if (numbered.length) {
@@ -134,32 +201,39 @@ export function planCommand(text: string, world: WorldState): CommandPlan {
         selected.push(...matching);
       }
     }
-  } else if (allRequested) selected = available;
+  } else if (allRequested && !namedObjects.length) selected = available;
+  selected = [...new Map(selected.map(object => [object.id, object])).values()];
   // Leaving an explicitly mentioned object is supported without guessing.
   const leaveMatch = command.match(/\b(?:leave|except|excluding|skip)\s+(?:the\s+)?(red|blue|green)\b/);
-  if (leaveMatch) selected = (allRequested ? available : selected).filter(object => !object.id.includes(leaveMatch[1]));
-  if (!selected.length) return { ...base, summary: 'I need a known object to plan the motion.', error: 'Choose the red, blue, or green part. You can also ask to sort all parts.' };
+  if (leaveMatch) selected = (allRequested ? available : selected).filter(object => !hasColor(object, leaveMatch[1]));
+  if (!selected.length) return { ...base, summary: 'I need a known object to plan the motion.', error: `Choose an object in this scene: ${available.map(object => object.label).join(', ')}. You can also ask to sort all parts.` };
 
   let destination: DestinationId | undefined;
-  const mentionsA = /\b(left|tray\s*a|bin\s*a|container\s*a|tray\s*1)\b/.test(command);
-  const mentionsB = /\b(right|tray\s*b|bin\s*b|container\s*b|tray\s*2)\b/.test(command);
-  if (mentionsA && mentionsB) return { ...base, summary: 'Please clarify the object-to-tray assignment.', error: 'This command names both trays. Give one destination per command, or use “Sort all parts” for the collection assignment.' };
-  if (/\b(reject|review|quarantine|damaged)\b/.test(command)) destination = 'reject';
-  else if (/\b(left|tray\s*a|bin\s*a|container\s*a|tray\s*1)\b/.test(command)) destination = 'tray-a';
-  else if (/\b(right|tray\s*b|bin\s*b|container\s*b|tray\s*2)\b/.test(command)) destination = 'tray-b';
-  else if (/\b(?:to|onto|on|back\s+to)\s+(?:the\s+)?(?:table|worktable|original)\b/.test(command)) destination = 'table';
-  if (!destination && !isSort) return { ...base, summary: 'Please choose a destination.', error: 'Which destination: tray A, tray B, or the review tray?' };
+  const destinationPatterns: [DestinationId, RegExp][] = [
+    ['tray-a', /\b(left|tray\s*a|bin\s*a|container\s*a|tray\s*1)\b/g],
+    ['tray-b', /\b(right|tray\s*b|bin\s*b|container\s*b|tray\s*2)\b/g],
+    ['reject', /\b(reject|review|quarantine|damaged)\b/g],
+    ['table', /\b(?:to|onto|on|back\s+to)\s+(?:the\s+)?(?:table|worktable|original)\b/g],
+  ];
+  for (const [id, label] of Object.entries(world.destinationLabels ?? {})) {
+    // A tabletop label can also describe the source; require a placement preposition.
+    const pattern = id === 'table' ? new RegExp(`\\b(?:to|onto|on|back to)\\s+(?:the\\s+)?${label.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g') : phrasePattern(label);
+    destinationPatterns.push([id as DestinationId, pattern]);
+  }
+  const destinations = [...new Set(destinationPatterns.filter(([, pattern]) => pattern.test(command)).map(([id]) => id))];
+  if (destinations.length > 1) return { ...base, summary: 'Please clarify the object-to-destination assignment.', error: 'This command names multiple destinations. Give one destination per command, or use the environment’s named assignment.' };
+  destination = destinations[0];
+  if (!destination && !isSort) return { ...base, summary: 'Please choose a destination.', error: `Which destination: ${destinationName('tray-a')}, ${destinationName('tray-b')}, or ${destinationName('reject')}?` };
 
-  const steps: ActionStep[] = selected.filter(object => object.location !== (destination ?? (object.id.includes('blue') ? 'tray-b' : 'tray-a'))).map((object, index) => {
-    const target = destination ?? (object.id.includes('blue') ? 'tray-b' : 'tray-a');
-    return { id: `pick-${world.revision}-${index}-${object.id}-${target}`, kind: 'pick_place', label: `Move ${object.label.toLowerCase()} to ${target === 'reject' ? 'review tray' : target.replace('-', ' ')}`, objectId: object.id, destination: target };
-  });
-  if (!steps.length) return { ...base, summary: 'The selected parts are already at the requested destination.', error: 'No motion needed. Choose another destination or reset the scene.' };
-  return {
-    summary: isSort && !destination ? 'Sort red and green parts into tray A, and the blue part into tray B.' : `Move ${selected.map(object => object.label.toLowerCase()).join(' and ')} to ${destination === 'reject' ? 'the review tray' : destination?.replace('-', ' ')}.`,
-    steps,
-    confirmationRequired: destination === 'reject',
-  };
+  // Refuse unknown nouns even when a second, known object appears in the request.
+  let ungrounded = unnamedCommand;
+  for (const [, pattern] of destinationPatterns) { pattern.lastIndex = 0; ungrounded = ungrounded.replace(pattern, ' '); }
+  ungrounded = ungrounded.replace(/\b(red|blue|green)(?:\s+(?:blocks?|parts?|cubes?)(?:\s+\d+)?)?\b/g, ' ')
+    .replace(/\b(move|put|place|transfer|take|bring|send|return|sort|prepare|pack|collect|clear|all|everything|every|parts?|objects?|blocks?|cubes?|the|a|an|and|to|into|onto|on|in|from|back|please|can|could|you|robot|tray|table|worktable|counter|leave|except|excluding|skip)\b/g, ' ')
+    .replace(/[\s,.!?;:]/g, '');
+  if (ungrounded) return { ...base, summary: 'The request contains an unknown object or action.', error: 'Use the object labels and destination labels visible in this scene, or its named assignment. No partial action was planned.' };
+
+  return buildPlan(selected.map(object => ({ object, target: destination ?? (hasColor(object, 'blue') ? 'tray-b' : 'tray-a') })));
 }
 
 function copyWorld(world: WorldState): WorldState {
@@ -221,6 +295,12 @@ export function advanceWorld(source: WorldState, step: ActionStep, dt: number): 
   if (source.lastCompletedStepId === step.id && !source.motion) return { world: source, done: true };
   if (source.robot.mode === 'paused' || source.robot.mode === 'stopped' || source.robot.mode === 'error') return { world: source, done: false };
   if (!Number.isFinite(dt) || dt <= 0) return { world: source, done: false };
+  // Explicit scenario interlock only: no tracked human, contact model or safety certification.
+  if (source.humanPresence?.state === 'in-workspace') return {
+    world: { ...source, robot: { ...source.robot, mode: 'paused', phase: 'Human workspace scenario: awaiting clearance' } },
+    done: false,
+    blocked: 'Human workspace scenario is occupied. Clear the scenario, then explicitly resume.',
+  };
   const world = copyWorld(source);
   if (!world.motion || world.motion.stepId !== step.id) {
     const motion = startMotion(world, step);

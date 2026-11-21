@@ -1,141 +1,167 @@
-# TeachTrace · Workcell Studio
+# TeachTrace
 
-A laptop-first robotics demonstration workbench: describe a bounded task, inspect
-the plan, approve it, watch an articulated arm execute it, and review the recorded
-simulator episode. No physical robot is required.
+**A voice-operated task and evidence console for a household robotics team.**
 
-The environment studio adds four repeatable scenarios and a reviewed scene
-composer. Describe supported setups such as **“Create a workcell with two red
-blocks and one blue block”**, inspect the validated draft, and approve it. The
-scenario suite runs actual controller checks for baseline completion, rearranged
-objects, unreachable targets, and occupied trays. Downloadable results distinguish
-expected rejection from unexpected failure.
-
-The interface is informed by Intrinsic Flowstate's workcell/skill workflow,
-Foxglove's synchronized recordings, and Formant's operator controls. It uses its
-own branding and implementation. See [design references](docs/DESIGN_REFERENCES.md)
-and the [detailed product plan](docs/PRODUCT_PLAN.md).
+A robotics data or evaluation engineer specifies a task, reviews the robot's
+plan, observes the simulated attempt, and saves a checked record. TeachTrace
+runs on a laptop without robot hardware. Its output is a reproducible scene,
+observed states, failures and a reviewed report for the team.
 
 ## Run locally
 
 ```sh
 npm install
-npm run server
+npm run demo:start
+npm run demo:status
 ```
 
-In a second terminal:
+Open **[http://127.0.0.1:5189/](http://127.0.0.1:5189/)**. Use a recent Node version
+supporting `--env-file-if-exists`; the full launcher also needs `cloudflared`.
+The UI listens on loopback port **5189**, the local API uses **8787**, and the
+public HTTPS tunnel exposes authenticated tool callbacks on **8788** only.
 
 ```sh
-npm run dev
+npm run doctor -- --check --health
+npm run demo:restart-api  # Reload backend changes; reconnect voice afterward
+npm run demo:stop         # Stop only verified project-owned processes
 ```
 
-Open **http://127.0.0.1:5189**. Port 5189 avoids an unrelated local application
-already using port 5173. The API listens on loopback port 8787; Vite proxies
-`/api`. Port 8788 accepts authenticated cloud-agent tool callbacks only.
+The launcher checks process ownership before reuse/stop and keeps logs/PIDs in
+ignored `.local/`. A new callback tunnel updates only `PUBLIC_API_BASE_URL` in
+`.env.local`. For simulator use without a tunnel, run `npm run server` and
+`npm run dev -- --host 127.0.0.1 --port 5189 --strictPort` in separate terminals.
 
-## Try the full local workflow
+## The main demo: voice → robot attempt → reviewed report
 
-1. Click **Sort all parts**, then **Approve & run**.
-2. Watch the arm approach, grasp, lift, transfer, release, and verify each part.
-3. Pause and resume while the task is running. Stop cancels the queue and holds
-   the current pose; reset is required before a new collection after stopping.
-4. After completion, replay the episode or scrub its timeline.
-5. Review and approve the episode. With the local API running, this saves a
-   JSON record under ignored `.local/episodes/`; otherwise approval stays in this
-   browser. JSON export is available in either mode.
-6. Reset the scene, select a part, and change its starting position. Commands
-   resolve against the current positions rather than a pre-recorded animation.
-7. Open **Environment** to load another scenario, describe a custom workcell,
-   or run and export the controller-validation suite.
+1. Open **Mobile kitchen**, connect voice and say **“Take cup from counter to
+   sink.”** The cup begins 5.15 m away, beyond the 1.35 m stationary arm reach.
+2. Review five explicit steps: navigate to Counter, recheck reach, collect Cup,
+   navigate to Sink, and place Cup. Approve manually or use the cancellable
+   three-second countdown for reversible simulation motion.
+3. Observe actual base travel and carried-object movement. **Human enters →
+   Clear human → Resume** tests a software obstruction; clearance alone does
+   not resume the mission. Completion requires actual docking and delivery checks.
+4. In **Review**, choose **Review & save mobile evidence**, inspect the frozen
+   recording, then explicitly **Approve & save mobile evidence**. The local API
+   verifies integrity and recorded geometry/history, saves the native record,
+   and returns a service report. Approval preserves stopped/failed outcomes.
+5. Open **Saved recordings → Open mobile recording**. The application verifies
+   its SHA-256 and shows read-only replay. Scrub the actual states, export the
+   recording, then **Return to live kitchen**; the live world is preserved.
 
-Robot activity messages report task start, verified placements, and failures.
-With a verified live Agora session, optional narration uses the existing Murf
-Falcon voice through Agora's `speak` API. Progress requests are appended and may
-queue until a pending conversational turn finishes. Provider acceptance does not
-prove audible playback; the UI reports queued voice accurately.
+The combined real-provider rehearsal passed: prerecorded voice → five actual
+steps → explicit review → HTTP 201 save → factual spoken report. A fresh browser
+reopened that exact record, replayed and reexported it; the standalone consumer
+verified its seal and kinematics. See [validation](docs/VALIDATION.md) and the
+[labelled backup video](.local/qa/final-workflow/teachtrace-voice-workflow.mp4).
+A saved report is local persistence, not an upload to a robotics lab.
 
-Supported local commands include:
+**Compare fixed vs mobile reach** holds the initial scene, target, reach and
+handling controller constant while removing navigation from the stationary
+condition. **AI deployment checks** executes declared human, bounded-baseline or
+LLM symbolic plans. It preserves wrong ordering and destinations: controller
+completion can still fail the task, including moving a protected Bowl and
+returning it to the exact original pose. This is controller/task evaluation,
+not a learned motor-policy benchmark.
 
-```text
-Sort all parts
-Move red and blue to tray A
-Move green to review
-Return red to table
-Pause
-Resume
-Stop
-Reset
-Create a workcell with two red blocks and one blue block
-Create an empty workcell
-Create a reach-limit test
+**Go Home** is a navigation goal. It can retain loaded cargo and never counts
+parking as an object delivery or invents a placement.
+
+## Workcell tasks, reference scenes and variations
+
+**Environment → Household scenarios → After-meal counter reset** provides a
+second complete workflow: **“Clear the after-meal counter”** moves two used cups
+to the Sink rack while leaving the reserved bowl untouched. This is rack loading,
+not dishwashing. Repair and sample-routing environments also have retrievable
+locally authored SOPs and assigned tasks. Reviewed workcell submission stores an
+episode, updates its local assignment and creates a persistent report.
+
+Text, a photo or one selected video frame can propose a supported scene for
+operator review. The applied world retains the SHA-256 of the exact submitted
+resized JPEG, reference kind and selected-frame time, without retaining media or
+filenames. Calibration and rights verification are explicitly false. This is an
+approximate scene using bounded assets/slots, not room reconstruction or tracked
+human motion.
+
+**Generate variations** executes reproducible layouts, reach challenges and human
+occupancy cases from one source. The rehearsed after-meal task at seed 42/count
+100 produced **60 accepted tasks, 40 expected refusals and zero unexpected
+outcomes**, without provider calls. These are correlated synthetic cases, not
+100 independent human demonstrations. Loaded child recordings retain their
+shared declared parent fingerprint, seed, index and kind. Hashing time is
+reported separately from controller/trace generation time.
+
+## What another program can consume
+
+Native exports contain task/scene states, events, outcomes and the same derived
+joint/link/TCP coordinates used by the renderer. The standalone consumer needs
+only Node built-ins:
+
+```sh
+node scripts/consume-evidence.mjs INPUT.teachtrace.json --out .local/consumer/run-1
 ```
 
-The local command interpreter is deliberately bounded. Unknown objects and
-ambiguous destinations cause clarification rather than invented actions. Live
-LLM interpretation becomes available through the optional voice integration.
-Scene authoring creates instances of a supported template, with a maximum of
-six rigid objects. It is not arbitrary text-to-3D generation. Camera/video-assisted
-scene suggestions are a planned, separately reviewed stage; video import is not
-implemented in this version.
+It verifies integrity and additive forward kinematics, then writes JSONL
+observations and **next-observed-state targets**, plus a manifest. These targets
+are not requested motor commands. Related variants share declared parent groups;
+ancestry remains unverified, and no train/test split is performed. See
+[the consumer contract](docs/DATA_CONSUMER.md).
 
-## Real Agora + Murf voice
+This supports reproducibility, regression, failure triage and data inspection.
+It does not establish calibrated training actions, LeRobot/RLDS compatibility,
+recipient ingestion, a trained policy, learning gain or real-robot transfer.
 
-Follow [the credential setup guide](server/SETUP.md). The ignored `.env.local`
-file needs Agora project credentials, Agora REST credentials, a Murf Falcon key,
-an LLM key, and a public HTTPS callback origin. Keep provider secrets out of the
-browser and never use `VITE_` variables for them.
+## Agora + Murf configuration and voice evidence
 
-The integration adapter is implemented and tested against mocked provider
-requests. **A real Agora/Murf session has not yet been verified.** Configuration
-presence does not prove account access or successful provider connectivity.
+Follow [account setup](docs/ACCOUNT_SETUP_CHECKLIST.md) and
+[server setup](server/SETUP.md). Keep credentials only in ignored `.env.local`:
 
-The UI distinguishes local commands, an RTC connection waiting for agent audio,
-and a live agent audio connection. Voice commands prepare a plan. Explicit
-operator approval executes it. A tool result reports completion only after the
-simulator verifies the requested placements.
+- `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`;
+- `MURF_API_KEY`, `LLM_API_KEY`;
+- `PUBLIC_API_BASE_URL`, maintained for a new callback tunnel by the launcher.
 
-## What is simulated
+Never put secrets in chat, source, exports or `VITE_` variables. Certificate-based
+Agora REST authentication makes Customer ID/Secret optional. Agora Conversational
+AI/RTC supplies the session/audio transport; Murf Falcon supplies speech output;
+the LLM retrieves context and uses authenticated action tools.
 
-- An articulated arm with analytic inverse kinematics and a downward gripper.
-- Deterministic, high-clearance pick-and-place movements.
-- Idealized object attachment/release, reach checks, and destination occupancy.
-- Simulator-grounded object positions, action events, and outcome checks.
+A real-provider prerecorded mobile run executed five skills, travelled 10 m,
+recorded 111 states, verified Cup at Sink and captured 738,889 remote-audio bytes.
+A separate audit captured and transcribed real progress speech, but its overall
+delivery wait timed out; it is evidence of progress audio, not a passed complete
+run. **A person's microphone/speaker acceptance remains open.** Queued speech is
+not proof of playback, and speech can arrive after the verified milestone.
 
-This version has **no contact dynamics, friction-based grasping, complete
-swept-link/self-collision checking, learned robot policy, or demonstrated
-sim-to-real transfer**. Its exports are kinematic demonstration records,
-explicitly tagged with these boundaries, rather than validated real-robot data.
+Mobile connection errors are visible with **Reset voice** recovery. A pending
+connection disables duplicate starts. Recovery tests deliberately denied the
+microphone before any provider start; they do not count as live-voice acceptance.
 
-## Checks
+## Readiness and boundaries
+
+This is a working bounded prototype, **not a production-ready robotics platform**.
+The simulation has idealized attachment grasps and analytic kinematics, without
+contact dynamics, measured forces, SLAM, complete arm collision checking or
+validated physical safety. A phone reference does not supply calibrated sensing.
+
+The private hosted preview is a static frontend. The full workflow uses the local
+Node API, local records and laptop callback tunnel; cloud multi-user operations
+and recipient integration remain separate work. Local preflight checks cover
+private credential permissions, blocked `.local`/environment HTTP access and
+secret-free build output. These checks do not establish production security.
 
 ```sh
 npm test
 npm run build
 ```
 
-Tests cover task outcomes, sorting, occupied placements, command ambiguity,
-pause/stop, unreachable targets, idempotent action completion, inverse kinematics,
-missing voice credentials, provider payloads, authenticated command receipts,
-and local episode persistence.
+[Validation](docs/VALIDATION.md) records observed checks and open gates;
+[feature acceptance](docs/FEATURE_ACCEPTANCE.md) and the
+[atomic task backlog](docs/DELIVERY_BACKLOG.md) separate implementation, automated
+evidence, human acceptance and future work. Use the
+[four-minute runbook](docs/DEMO_SCRIPTS.md) and
+[judging story](docs/JUDGING_STORY.md) for the demo.
 
-## Source layout
-
-| Path | Responsibility |
-| --- | --- |
-| `src/App.tsx` | Command center, approvals, execution queue, recorder, replay |
-| `src/sim/engine.ts` | Authoritative world state, grounded plans, motion controller |
-| `src/sim/scenarios.ts` | Repeatable environments and actual controller checks |
-| `src/sim/scene-authoring.ts` | Bounded scene drafts and schema/geometry validation |
-| `src/components/ScenarioStudio.tsx` | Environment library, composer, and test results |
-| `src/components/RobotScene.tsx` | 3D rendering and camera controls |
-| `src/integrations/voice.ts` | Agora RTC client and voice-command bridge |
-| `server/config.mjs` | Server-only provider config and task knowledge |
-| `server/index.mjs` | Session lifecycle, tool callbacks, episode storage |
-| `docs/` | Product plan, architecture, design research, demo and validation gates |
-
-## Hosted UI
-
-The private hosted build is a static simulator/console. It supports browser-local
-recordings and JSON export. It does not deploy the local Node API or automatically
-connect to the laptop's voice service. Use the local version for provider setup
-and end-to-end voice testing. Deploying the voice backend is a separate stage.
+Primary research and design context: [Physical AI](docs/PHYSICAL_AI_RESEARCH.md),
+[data strategy](docs/DATA_FLYWHEEL_STRATEGY.md), and
+[design references](docs/DESIGN_REFERENCES.md). No company partnership, frontier-lab
+delivery, unverified hackathon win or model-training improvement is claimed.
