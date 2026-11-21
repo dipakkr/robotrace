@@ -6,6 +6,15 @@ Tell the robot what to do, watch the actual plan and motion, interrupt it, and i
 
 The main workspace is a persistent mobile kitchen. Cup, Bowl, Counter, Table, Sink and Home retain their state between tasks. Natural language describes the requested action; the controller checks routes, reach, cargo custody and task outcomes. Completion and task acceptance are separate results.
 
+## Watch the demo
+
+![RoboTrace kitchen environment with live voice conversation and session controls](docs/media/robotrace-kitchen.png)
+
+- **[English/Hindi navigation, Stop, pickup and held carrying — 73-second recorded demo](https://github.com/dipakkr/robotrace/blob/main/docs/media/robotrace-english-hindi-demo.mp4)**
+- **[Quiet listening, Pause/Resume, and Stop without leaving the kitchen — 41-second recorded demo](https://github.com/dipakkr/robotrace/blob/main/docs/media/robotrace-session-controls.mp4)**
+
+These are actual application recordings from real Agora/Murf sessions using prerecorded microphone input. The videos show the screen and captions; remote assistant audio was verified separately and is not mixed into these video files. The first clip shows an earlier control layout; the screenshot and second clip show the consolidated session controls. Videos can be opened or downloaded from their repository file pages.
+
 ## What works
 
 - **Voice-first operation:** Agora Conversational AI and RTC carry the conversation; Murf Falcon supplies speech. Live captions show both speakers. Freeform instructions are interpreted against the current scene before entering the controller; the sandbox has no object/destination form or text-entry box.
